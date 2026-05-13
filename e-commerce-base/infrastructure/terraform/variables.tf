@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "aws_profile" {
   description = "AWS CLI profile to use"
   type        = string
-  default     = "praveen"
+  default     = "sabari25"
 }
 
 variable "azure_subscription_id" {
