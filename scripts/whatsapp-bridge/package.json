@@ -1,0 +1,17 @@
+{
+  "name": "smartops-whatsapp-bridge",
+  "version": "1.0.0",
+  "description": "Local WhatsApp bridge for SmartOps human-in-the-loop approvals",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.26.1-alpha.2",
+    "qrcode-terminal": "^0.12.0",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,37 +1,33 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Slack Block Kit message builders.
-// Creates rich, interactive messages for incident notifications.
+// Slack Block Kit message builders — professional format, no emoji.
 // ---------------------------------------------------------------------------
 
-function buildIncidentMessage(incidentId, diagnosis, fix, approveUrl, rejectUrl) {
-  const severityEmoji = {
-    CRITICAL: ':red_circle:',
-    HIGH: ':large_orange_circle:',
-    MEDIUM: ':large_yellow_circle:',
-    LOW: ':white_circle:',
-  };
+const SEVERITY_LABEL = { CRITICAL: 'CRITICAL', HIGH: 'HIGH', MEDIUM: 'MEDIUM', LOW: 'LOW' };
 
+function buildIncidentMessage(incidentId, diagnosis, fix, approveUrl, rejectUrl) {
   const diffPreview = fix.files
-    .map((f) => `*${f.path}*\n${f.explanation || 'Updated'}`)
+    .map((f) => `${f.path}\n${f.explanation || 'Updated'}`)
     .join('\n\n')
     .substring(0, 2500);
+
+  const sev = SEVERITY_LABEL[diagnosis.severity] || 'MEDIUM';
 
   return [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `${incidentId} | ${diagnosis.severity || 'MEDIUM'}`, emoji: true },
+      text: { type: 'plain_text', text: `${incidentId}  |  ${sev}`, emoji: false },
     },
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
         text: [
-          `${severityEmoji[diagnosis.severity] || ':warning:'} *Incident Detected*`,
-          `*Service:* \`${diagnosis.service}\``,
-          `*Error Type:* \`${diagnosis.errorType}\``,
-          `*Root Cause:* ${diagnosis.rootCause}`,
+          `*[${sev}] Incident Detected*`,
+          `*Service:*     \`${diagnosis.service}\``,
+          `*Error Type:*  \`${diagnosis.errorType}\``,
+          `*Root Cause:*  ${diagnosis.rootCause}`,
         ].join('\n'),
       },
     },
@@ -53,11 +49,12 @@ function buildIncidentMessage(incidentId, diagnosis, fix, approveUrl, rejectUrl)
       text: {
         type: 'mrkdwn',
         text: [
-          '*:white_check_mark:  Click to approve and auto-heal:*',
-          `>  <${approveUrl}|*Approve & Deploy Fix*>`,
+          '*Action required — click a link below:*',
           '',
-          '*:x:  Click to reject:*',
-          `>  <${rejectUrl}|Reject>`,
+          `*[APPROVE]* — Roll back to stable and apply fix: <${approveUrl}|Approve and Deploy>`,
+          `*[REJECT]* — Skip this fix, manual action needed: <${rejectUrl}|Reject>`,
+          '',
+          'Or reply in thread with: `suggest: <your change request>`',
         ].join('\n'),
       },
     },
@@ -66,7 +63,7 @@ function buildIncidentMessage(incidentId, diagnosis, fix, approveUrl, rejectUrl)
       elements: [
         {
           type: 'mrkdwn',
-          text: `SmartOps Agent | ${new Date().toISOString()} | Links open in browser — no Slack app config needed`,
+          text: `SmartOps Agent  |  ${new Date().toISOString()}  |  Links open in browser`,
         },
       ],
     },
@@ -77,18 +74,18 @@ function buildApprovedMessage(incidentId, diagnosis, prNumber) {
   return [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `${incidentId} | RESOLVED`, emoji: true },
+      text: { type: 'plain_text', text: `${incidentId}  |  RESOLVED`, emoji: false },
     },
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
         text: [
-          ':white_check_mark: *Fix Approved & Deployed*',
-          `*Service:* \`${diagnosis.service}\``,
-          `*Root Cause:* ${diagnosis.rootCause}`,
-          `*PR:* #${prNumber} (auto-merged)`,
-        ].join('\n'),
+          `*[RESOLVED] Fix Approved and Deployed*`,
+          `*Service:*     \`${diagnosis.service}\``,
+          `*Root Cause:*  ${diagnosis.rootCause}`,
+          prNumber ? `*PR:*          #${prNumber} (merged)` : '',
+        ].filter(Boolean).join('\n'),
       },
     },
   ];
@@ -98,16 +95,16 @@ function buildRejectedMessage(incidentId, diagnosis) {
   return [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `${incidentId} | REJECTED`, emoji: true },
+      text: { type: 'plain_text', text: `${incidentId}  |  REJECTED`, emoji: false },
     },
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
         text: [
-          ':no_entry_sign: *Fix Rejected by SRE*',
-          `*Service:* \`${diagnosis.service}\``,
-          `*Root Cause:* ${diagnosis.rootCause}`,
+          `*[REJECTED] Fix Rejected by SRE*`,
+          `*Service:*  \`${diagnosis.service}\``,
+          `*Root Cause:*  ${diagnosis.rootCause}`,
           'The proposed fix was not applied. Manual intervention required.',
         ].join('\n'),
       },
@@ -119,21 +116,49 @@ function buildErrorMessage(incidentId, rawIncident, errorMsg) {
   return [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `${incidentId} | AGENT ERROR`, emoji: true },
+      text: { type: 'plain_text', text: `${incidentId}  |  AGENT ERROR`, emoji: false },
     },
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
         text: [
-          ':warning: *SmartOps Agent encountered an error while processing this incident*',
-          `*Service:* \`${rawIncident.service || 'unknown'}\``,
-          `*Error:* ${errorMsg}`,
-          'The agent could not generate a fix. Manual investigation required.',
+          `*[ERROR] SmartOps Agent encountered an error*`,
+          `*Service:*  \`${rawIncident.service || 'unknown'}\``,
+          `*Error:*    ${errorMsg}`,
+          'Manual investigation required.',
         ].join('\n'),
       },
     },
   ];
 }
 
-module.exports = { buildIncidentMessage, buildApprovedMessage, buildRejectedMessage, buildErrorMessage };
+function buildSuggestionAppliedMessage(incidentId, diagnosis, fix) {
+  return [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${incidentId}  |  FIX REVISED`, emoji: false },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          `*[REVISED] Fix updated based on your suggestion*`,
+          `*Service:*  \`${diagnosis.service}\``,
+          `*New Fix:*  ${fix.summary || fix.commitMessage}`,
+          '',
+          'Reply `approve` to deploy or `suggest: <new change>` to refine further.',
+        ].join('\n'),
+      },
+    },
+  ];
+}
+
+module.exports = {
+  buildIncidentMessage,
+  buildApprovedMessage,
+  buildRejectedMessage,
+  buildErrorMessage,
+  buildSuggestionAppliedMessage,
+};

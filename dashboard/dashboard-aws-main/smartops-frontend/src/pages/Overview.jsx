@@ -1,128 +1,149 @@
 import React, { useEffect, useState } from 'react';
 import { socket } from '../socket';
-import LiveCard from '../components/LiveCard';
-import { Activity, Users, AlertTriangle, Zap, Server, Shield, TrendingUp, Wifi } from 'lucide-react';
+import { Server, Activity, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 
-const Overview = () => {
-  const [cluster, setCluster] = useState({ pods: [], nodes: [], hpas: [] });
-  const [metrics, setMetrics] = useState({});
-  const [traffic, setTraffic] = useState({ activeUsers: 0, rps: 0, topEndpoints: [] });
-  const [loginFeed, setLoginFeed] = useState([]);
-  const [wsConnected, setWsConnected] = useState(socket.connected);
+function StatCard({ label, value, sub, color = '#2563eb', icon: Icon }) {
+  return (
+    <div className="bg-white rounded-xl border p-5 fadein" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
+          <p className="text-3xl font-bold" style={{ color: 'var(--text-main)' }}>{value}</p>
+          {sub && <p className="text-xs mt-1" style={{ color: 'var(--text-sub)' }}>{sub}</p>}
+        </div>
+        {Icon && (
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: color + '15' }}>
+            <Icon className="w-5 h-5" style={{ color }} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PodRow({ pod }) {
+  const running = pod.status === 'Running';
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b last:border-0" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-center gap-3">
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${running ? 'bg-green-500' : 'bg-amber-500'}`} />
+        <span className="text-sm font-mono" style={{ color: 'var(--text-main)' }}>{pod.name}</span>
+      </div>
+      <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-muted)' }}>
+        <span>{pod.namespace}</span>
+        <span className={`px-2 py-0.5 rounded font-semibold ${running ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+          {pod.status}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default function Overview() {
+  const [cluster, setCluster]     = useState({ pods: [], nodes: [] });
+  const [incidents, setIncidents] = useState([]);
+  const [lastUpdate, setLastUpdate] = useState(null);
 
   useEffect(() => {
-    socket.on('connect', () => setWsConnected(true));
-    socket.on('disconnect', () => setWsConnected(false));
-    socket.on('cluster:update', setCluster);
-    socket.on('metrics:update', setMetrics);
-    socket.on('traffic:update', (data) => {
-      setTraffic(data);
+    socket.on('cluster:update', (data) => {
+      setCluster(data);
+      setLastUpdate(new Date());
     });
-    socket.on('login:event', (payload) => {
-      setLoginFeed(prev => [payload, ...prev].slice(0, 10));
-    });
-
+    socket.on('incident:detected', (data) => setIncidents(prev => [data, ...prev]));
+    socket.on('incident:resolved', (data) => setIncidents(prev =>
+      prev.map(i => i.id === data.id ? { ...i, status: 'resolved' } : i)
+    ));
     return () => {
-      socket.off('connect');
-      socket.off('disconnect');
       socket.off('cluster:update');
-      socket.off('metrics:update');
-      socket.off('traffic:update');
-      socket.off('login:event');
+      socket.off('incident:detected');
+      socket.off('incident:resolved');
     };
   }, []);
 
-  const totalPods = cluster.pods?.length || 0;
-  const runningPods = cluster.pods?.filter(p => p.status === 'Running').length || 0;
-  const isHealthy = totalPods > 0 && runningPods === totalPods;
-
-  const hpa = cluster.hpas?.[0];
-  const replicasStr = hpa ? `${hpa.currentReplicas} / ${hpa.desiredReplicas}` : 'N/A';
-
-  const rps = (metrics.rps || traffic.rps || 0).toFixed(2);
-  const activeUsers = metrics.activeConnections || traffic.activeUsers || 0;
-  const errorRate = (metrics.errorRate || 0).toFixed(4);
-  const p95ms = ((metrics.p95Latency || 0) * 1000).toFixed(0);
-  const loginRate = ((metrics.loginRate || 0) * 60).toFixed(2); // per minute
-
-  const topEndpoints = traffic.topEndpoints || [];
+  const pods        = cluster.pods || [];
+  const nodes       = cluster.nodes || [];
+  const running     = pods.filter(p => p.status === 'Running').length;
+  const total       = pods.length;
+  const healthy     = total > 0 && running === total;
+  const activeInc   = incidents.filter(i => i.status !== 'resolved').length;
+  const readyNodes  = nodes.filter(n => n.status === 'Ready').length;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold flex items-center gap-3">
-          <Activity className="text-blue-500 w-8 h-8" />
-          SmartOps Overview
-        </h1>
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border ${wsConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'}`}>
-          <Wifi className="w-4 h-4" />
-          {wsConnected ? 'LIVE — Connected to EKS' : 'WebSocket Offline'}
+    <div className="p-7 max-w-6xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-bold" style={{ color: 'var(--text-main)' }}>Overview</h1>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-sub)' }}>
+            Real-time EKS cluster state
+            {lastUpdate && ` — updated ${lastUpdate.toLocaleTimeString()}`}
+          </p>
         </div>
+        <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+          healthy ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+        }`}>
+          {healthy ? 'All Systems Operational' : total === 0 ? 'Connecting...' : 'Degraded'}
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        <LiveCard title="Cluster Status"   value={isHealthy ? 'Healthy' : totalPods === 0 ? 'Connecting...' : 'Degraded'} icon={Shield} trend={isHealthy ? 'up' : 'down'} />
-        <LiveCard title="Running Pods"     value={`${runningPods} / ${totalPods}`} icon={Server} />
-        <LiveCard title="Requests / sec"   value={rps} unit="req/s" icon={Activity} trend="up" />
-        <LiveCard title="Active Sessions"  value={activeUsers} icon={Users} trend="up" />
-        <LiveCard title="Login Rate"       value={loginRate} unit="logins/min" icon={TrendingUp} />
-        <LiveCard title="P95 Latency"      value={p95ms} unit="ms" icon={Zap} />
-        <LiveCard title="Error Rate"       value={errorRate} unit="err/s" icon={AlertTriangle} trend={(metrics.errorRate || 0) > 0.01 ? 'down' : 'up'} />
-        <LiveCard title="HPA Replicas"     value={replicasStr} icon={Activity} />
+      {/* KPI grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-7">
+        <StatCard label="Running Pods" value={`${running} / ${total}`}
+          sub={total === 0 ? 'Waiting for data...' : `${total - running} not running`}
+          color="#2563eb" icon={Server} />
+        <StatCard label="Ready Nodes" value={`${readyNodes} / ${nodes.length}`}
+          sub="EKS worker nodes"
+          color="#16a34a" icon={Activity} />
+        <StatCard label="Active Incidents" value={activeInc}
+          sub={activeInc === 0 ? 'No active issues' : 'Awaiting resolution'}
+          color={activeInc > 0 ? '#dc2626' : '#16a34a'} icon={AlertTriangle} />
+        <StatCard label="Total Detected" value={incidents.length}
+          sub="Since agent started"
+          color="#7c3aed" icon={Clock} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Endpoints */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 shadow-lg overflow-hidden">
-          <div className="p-4 border-b border-slate-700 bg-slate-800/60">
-            <h3 className="font-semibold text-slate-200">Top Endpoints (last 5s)</h3>
-          </div>
-          <div className="p-4 space-y-3">
-            {topEndpoints.length === 0 ? (
-              <p className="text-slate-500 text-center py-4 italic">Waiting for traffic data...</p>
-            ) : topEndpoints.map((ep, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-full">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-300 font-mono">{ep.path}</span>
-                    <span className="text-slate-400">{(ep.count || 0).toFixed(2)} req/s</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((ep.count || 0) / Math.max(...topEndpoints.map(e => e.count || 0.001))) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Two-column: pods + recent incidents */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {/* Live Login Events */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 shadow-lg overflow-hidden">
-          <div className="p-4 border-b border-slate-700 bg-slate-800/60">
-            <h3 className="font-semibold text-slate-200">Live Login Events (Kafka)</h3>
+        {/* Pod list */}
+        <div className="bg-white rounded-xl border" style={{ borderColor: 'var(--border)' }}>
+          <div className="px-5 py-3.5 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-main)' }}>Pod Status</span>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{total} pods</span>
           </div>
-          <div className="p-4 max-h-60 overflow-y-auto space-y-3">
-            {loginFeed.length === 0 ? (
-              <p className="text-slate-500 text-center py-4 italic">
-                Waiting for login events via Kafka stream...
-                <br/>
-                <span className="text-xs mt-1 block">Login counts tracked via Prometheus while Kafka is warming up.</span>
+          <div className="px-5 py-2 max-h-72 overflow-y-auto">
+            {pods.length === 0 ? (
+              <p className="text-sm py-6 text-center" style={{ color: 'var(--text-muted)' }}>
+                Waiting for cluster data...
               </p>
-            ) : loginFeed.map((event, i) => (
-              <div key={i} className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
-                <div className="flex gap-4">
-                  <span className="text-blue-400 font-mono text-sm">{event.registrationNo}</span>
-                  <span className="text-slate-400 text-sm">{event.department}</span>
+            ) : pods.slice(0, 20).map((p, i) => <PodRow key={i} pod={p} />)}
+          </div>
+        </div>
+
+        {/* Recent incidents */}
+        <div className="bg-white rounded-xl border" style={{ borderColor: 'var(--border)' }}>
+          <div className="px-5 py-3.5 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-main)' }}>Recent Incidents</span>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{incidents.length} total</span>
+          </div>
+          <div className="px-5 py-2 max-h-72 overflow-y-auto">
+            {incidents.length === 0 ? (
+              <div className="py-8 text-center">
+                <CheckCircle className="w-8 h-8 mx-auto mb-2 text-green-500 opacity-60" />
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No incidents detected</p>
+              </div>
+            ) : incidents.slice(0, 10).map((inc, i) => (
+              <div key={i} className="py-2.5 border-b last:border-0 fadein" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-semibold" style={{ color: 'var(--brand)' }}>{inc.id}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                    inc.status === 'resolved'
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-red-50 text-red-700'
+                  }`}>{inc.status || 'active'}</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-slate-500">{new Date(event.timestamp).toLocaleTimeString()}</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${event.status === 'SUCCESS' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                    {event.status}
-                  </span>
-                </div>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-sub)' }}>
+                  {inc.service} — {inc.timestamp ? new Date(inc.timestamp).toLocaleTimeString() : ''}
+                </p>
               </div>
             ))}
           </div>
@@ -130,6 +151,4 @@ const Overview = () => {
       </div>
     </div>
   );
-};
-
-export default Overview;
+}

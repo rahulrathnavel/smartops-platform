@@ -1,56 +1,58 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
-import { Activity, Box, BarChart3, Terminal, Network, TrendingUp, ShieldCheck, AlertTriangle, Cpu } from 'lucide-react';
+import { Activity, Box, AlertTriangle, Network, History, Wifi, WifiOff } from 'lucide-react';
 import { socket } from './socket';
 
-import Overview from './pages/Overview';
-import Kubernetes from './pages/Kubernetes';
-import Metrics from './pages/Metrics';
-import Logs from './pages/Logs';
-import Autoscaling from './pages/Autoscaling';
-import Health from './pages/Health';
-import Incidents from './pages/Incidents';
-import RCATopology from './pages/RCATopology';
+import Overview        from './pages/Overview';
+import Kubernetes      from './pages/Kubernetes';
+import Incidents       from './pages/Incidents';
+import RCATopology     from './pages/RCATopology';
+import IncidentHistory from './pages/IncidentHistory';
 
-const SidebarLink = ({ to, icon: Icon, children, badge }) => (
-  <NavLink 
-    to={to} 
-    className={({ isActive }) => 
-      `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-        isActive 
-          ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' 
-          : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+const NAV = [
+  { section: 'Monitoring',    items: [
+    { to: '/overview',   icon: Activity,       label: 'Overview'        },
+    { to: '/kubernetes', icon: Box,            label: 'Kubernetes'      },
+  ]},
+  { section: 'Self-Healing', items: [
+    { to: '/incidents',    icon: AlertTriangle, label: 'Incidents', badge: true },
+    { to: '/rca-topology', icon: Network,       label: 'RCA Topology'   },
+    { to: '/history',      icon: History,       label: 'Incident History'},
+  ]},
+];
+
+function SidebarLink({ to, icon: Icon, label, badge, count }) {
+  return (
+    <NavLink to={to} className={({ isActive }) =>
+      `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+        isActive
+          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
       }`
-    }
-  >
-    <Icon className="w-5 h-5" />
-    <span className="font-medium tracking-wide flex-1">{children}</span>
-    {badge > 0 && (
-      <span className="bg-rose-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
-        {badge}
-      </span>
-    )}
-  </NavLink>
-);
+    }>
+      <Icon className="w-4 h-4 flex-shrink-0" />
+      <span className="flex-1">{label}</span>
+      {badge && count > 0 && (
+        <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center pulse-dot">
+          {count}
+        </span>
+      )}
+    </NavLink>
+  );
+}
 
-function App() {
-  const [isConnected, setIsConnected] = useState(socket.connected);
-  const [activeIncidents, setActiveIncidents] = useState(0);
+export default function App() {
+  const [connected, setConnected]       = useState(socket.connected);
+  const [activeCount, setActiveCount]   = useState(0);
 
   useEffect(() => {
-    function onConnect() { setIsConnected(true); }
-    function onDisconnect() { setIsConnected(false); }
-
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-
-    // Track active incident count for badge
-    socket.on('incident:detected', () => setActiveIncidents(prev => prev + 1));
-    socket.on('incident:resolved', () => setActiveIncidents(prev => Math.max(0, prev - 1)));
-
+    socket.on('connect',    () => setConnected(true));
+    socket.on('disconnect', () => setConnected(false));
+    socket.on('incident:detected',  () => setActiveCount(n => n + 1));
+    socket.on('incident:resolved',  () => setActiveCount(n => Math.max(0, n - 1)));
     return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
+      socket.off('connect');
+      socket.off('disconnect');
       socket.off('incident:detected');
       socket.off('incident:resolved');
     };
@@ -58,72 +60,60 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex h-screen bg-[#0f172a] text-slate-50 overflow-hidden">
-        
+      <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
+
         {/* Sidebar */}
-        <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
-          <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center">
-                <Activity className="text-white w-5 h-5" />
+        <aside className="w-56 bg-white border-r flex flex-col flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
+          {/* Logo */}
+          <div className="px-5 py-4 border-b flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
+            <div className="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center">
+              <Activity className="w-4 h-4 text-white" />
+            </div>
+            <span className="font-bold text-base" style={{ color: 'var(--text-main)' }}>SmartOps</span>
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+            {NAV.map(({ section, items }) => (
+              <div key={section}>
+                <p className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  {section}
+                </p>
+                <div className="space-y-0.5">
+                  {items.map(({ to, icon, label, badge }) => (
+                    <SidebarLink key={to} to={to} icon={icon} label={label} badge={badge} count={activeCount} />
+                  ))}
+                </div>
               </div>
-              <h1 className="text-xl font-bold tracking-wider text-white">SmartOps</h1>
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
-            <div className="px-2 mb-2">
-              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Monitoring</span>
-            </div>
-            <SidebarLink to="/overview" icon={Activity}>Overview</SidebarLink>
-            <SidebarLink to="/kubernetes" icon={Box}>Kubernetes</SidebarLink>
-            <SidebarLink to="/metrics" icon={BarChart3}>Metrics</SidebarLink>
-            <SidebarLink to="/logs" icon={Terminal}>Logs Stream</SidebarLink>
-            <SidebarLink to="/autoscaling" icon={TrendingUp}>Autoscaling</SidebarLink>
+            ))}
+          </nav>
 
-            <div className="px-2 mt-4 mb-2">
-              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Self-Healing</span>
-            </div>
-            <SidebarLink to="/incidents" icon={AlertTriangle} badge={activeIncidents}>Incidents</SidebarLink>
-            <SidebarLink to="/rca-topology" icon={Cpu}>RCA Topology</SidebarLink>
-
-            <div className="px-2 mt-4 mb-2">
-              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">System</span>
-            </div>
-            <SidebarLink to="/health" icon={ShieldCheck}>Health</SidebarLink>
+          {/* Connection status */}
+          <div className="px-4 py-3 border-t flex items-center gap-2" style={{ borderColor: 'var(--border)' }}>
+            {connected
+              ? <Wifi className="w-3.5 h-3.5 text-green-500" />
+              : <WifiOff className="w-3.5 h-3.5 text-red-400" />
+            }
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {connected ? 'Live — EKS Connected' : 'Disconnected'}
+            </span>
+            <span className={`ml-auto w-2 h-2 rounded-full ${connected ? 'bg-green-500 pulse-dot' : 'bg-red-400'}`} />
           </div>
-          
-          <div className="p-4 border-t border-slate-800 bg-slate-900/50">
-            <div className="flex items-center justify-between px-2">
-              <span className="text-sm font-medium text-slate-400">WebSocket</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  {isConnected ? 'Live' : 'Offline'}
-                </span>
-                <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500'}`}></span>
-              </div>
-            </div>
-          </div>
-        </div>
+        </aside>
 
-        {/* Main Content */}
-        <div className="flex-1 overflow-y-auto bg-gradient-to-br from-slate-900 to-[#0f172a]">
+        {/* Main content */}
+        <main className="flex-1 overflow-y-auto">
           <Routes>
-            <Route path="/" element={<Navigate to="/overview" replace />} />
-            <Route path="/overview" element={<Overview />} />
-            <Route path="/kubernetes" element={<Kubernetes />} />
-            <Route path="/metrics" element={<Metrics />} />
-            <Route path="/logs" element={<Logs />} />
-            <Route path="/autoscaling" element={<Autoscaling />} />
-            <Route path="/incidents" element={<Incidents />} />
+            <Route path="/"             element={<Navigate to="/overview" replace />} />
+            <Route path="/overview"     element={<Overview />} />
+            <Route path="/kubernetes"   element={<Kubernetes />} />
+            <Route path="/incidents"    element={<Incidents />} />
             <Route path="/rca-topology" element={<RCATopology />} />
-            <Route path="/health" element={<Health />} />
+            <Route path="/history"      element={<IncidentHistory />} />
           </Routes>
-        </div>
+        </main>
 
       </div>
     </BrowserRouter>
   );
 }
-
-export default App;

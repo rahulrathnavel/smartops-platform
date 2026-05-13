@@ -8,6 +8,37 @@ const slack = require('../integrations/slack-client');
 const blockKit = require('../slack/block-kit');
 
 // ---------------------------------------------------------------------------
+// DynamoDB ledger — persists every incident lifecycle event.
+// Table: smartops-incidents  |  Key: incidentId (HASH) + createdAt (RANGE)
+// ---------------------------------------------------------------------------
+let _dynamo = null;
+function getDynamo() {
+  if (!_dynamo) {
+    const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+    const { DynamoDBDocumentClient, PutCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+    const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'ap-south-1' });
+    _dynamo = { doc: DynamoDBDocumentClient.from(client), PutCommand, ScanCommand };
+  }
+  return _dynamo;
+}
+
+async function ledgerWrite(item) {
+  try {
+    const db = getDynamo();
+    await db.doc.send(new db.PutCommand({
+      TableName: 'smartops-incidents',
+      Item: {
+        incidentId: item.incidentId,
+        createdAt:  item.createdAt || new Date().toISOString(),
+        ...item,
+      },
+    }));
+  } catch (err) {
+    console.warn('[LEDGER] DynamoDB write failed:', err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard WebSocket bridge — emits events to connected dashboard clients
 // ---------------------------------------------------------------------------
 function emitToSocket(event, data) {
@@ -106,6 +137,17 @@ async function handleNewIncident(rawIncident) {
   };
 
   incidents.set(incidentId, state);
+
+  // Persist to DynamoDB ledger
+  ledgerWrite({
+    incidentId,
+    createdAt: state.createdAt,
+    eventType: 'DETECTED',
+    service: rawIncident.service,
+    errorLog: (rawIncident.errorLog || '').substring(0, 500),
+    source: rawIncident.source,
+    status: 'DETECTED',
+  });
 
   // Emit detection event to dashboard
   emitToSocket('incident:detected', {
@@ -264,7 +306,23 @@ async function handleApproval(incidentId, userId) {
   const targetNamespace = state.raw.namespace || 'ammazone';
 
   console.log(`[INCIDENT] ${incidentId} -- Step 0: Rolling back ${targetService} via K8s API...`);
-  const rolled = await rollbackDeployment(targetService, targetNamespace);
+  await rollbackDeployment(targetService, targetNamespace);
+
+  state.status = 'DEPLOYED';
+  state.resolvedAt = new Date().toISOString();
+
+  ledgerWrite({
+    incidentId,
+    createdAt: state.createdAt,
+    eventType: 'APPROVED',
+    resolvedAt: state.resolvedAt,
+    approvedBy: userId,
+    action: 'K8s rollback to :latest',
+    service: targetService,
+    diagnosis: state.diagnosis?.rootCause,
+    fixSummary: state.fix?.summary,
+    status: 'DEPLOYED',
+  });
 
   emitToSocket('incident:resolved', {
     id: incidentId,
@@ -276,7 +334,7 @@ async function handleApproval(incidentId, userId) {
     await slack.postThreadReply(
       state.slackMessage.channel,
       state.slackMessage.ts,
-      `✅ *Immediate remediation triggered!* Rolled ${targetService} back to stable \`:latest\` image. Pod restart in progress...`
+      `[RESOLVED] Rolled ${targetService} back to stable :latest image. Service recovering.`
     ).catch(() => {});
   }
 
@@ -358,6 +416,18 @@ async function handleRejection(incidentId, userId) {
 
   await logAuditEvent({ incidentId, actionType: 'SLACK_APPROVAL_RECEIVED', decision: 'rejected', actor: userId });
   state.status = 'REJECTED';
+  state.resolvedAt = new Date().toISOString();
+
+  ledgerWrite({
+    incidentId,
+    createdAt: state.createdAt,
+    eventType: 'REJECTED',
+    resolvedAt: state.resolvedAt,
+    rejectedBy: userId,
+    service: state.raw?.service,
+    diagnosis: state.diagnosis?.rootCause,
+    status: 'REJECTED',
+  });
 
   if (state.slackMessage) {
     const blocks = blockKit.buildRejectedMessage(incidentId, state.diagnosis);
@@ -380,14 +450,34 @@ async function handleSuggestion(incidentId, suggestion, userId) {
     actor: userId,
   });
 
+  // Record suggestion in ledger
+  ledgerWrite({
+    incidentId,
+    createdAt: new Date().toISOString(),
+    eventType: 'SUGGESTION',
+    suggestionBy: userId,
+    suggestionText: suggestion.substring(0, 500),
+    service: state.raw?.service,
+    status: 'SUGGESTION_RECEIVED',
+  });
+
   try {
     // Re-run Step 3 with the suggestion
     state.fix = await generateFix(incidentId, state.diagnosis, state.context, suggestion);
     state.status = 'FIX_PROPOSED';
 
-    // Post updated fix in Slack thread
-    const blocks = blockKit.buildIncidentMessage(incidentId, state.diagnosis, state.fix);
-    state.slackMessage = await slack.postIncidentMessage(blocks, `Revised fix for ${incidentId}`);
+    // Generate new approval tokens for the revised fix
+    const approveToken = generateApprovalToken(incidentId);
+    const rejectToken  = generateApprovalToken(incidentId + ':reject');
+    state.approveToken = approveToken;
+    state.rejectToken  = rejectToken;
+    const approveUrl = `${AGENT_BASE_URL}/approve/${incidentId}/${approveToken}`;
+    const rejectUrl  = `${AGENT_BASE_URL}/reject/${incidentId}/${rejectToken}`;
+
+    // Post revised fix (with new approval links)
+    const blocks = blockKit.buildSuggestionAppliedMessage(incidentId, state.diagnosis, state.fix);
+    const approvalSection = blockKit.buildIncidentMessage(incidentId, state.diagnosis, state.fix, approveUrl, rejectUrl).slice(-2);
+    state.slackMessage = await slack.postIncidentMessage([...blocks, ...approvalSection], `Revised fix for ${incidentId}`);
     state.status = 'AWAITING_APPROVAL';
   } catch (err) {
     console.error(`[INCIDENT] ${incidentId} -- Suggestion re-run failed:`, err.message);
@@ -436,6 +526,21 @@ async function handleUrlRejection(incidentId, _token, userId) {
   return handleRejection(incidentId, userId);
 }
 
+function getAllIncidents() {
+  return Array.from(incidents.values()).map((s) => ({
+    id: s.id,
+    status: s.status,
+    service: s.raw?.service,
+    errorLog: s.raw?.errorLog?.substring(0, 200),
+    diagnosis: s.diagnosis?.rootCause,
+    severity: s.diagnosis?.severity,
+    proposedFix: s.fix?.summary,
+    prNumber: s.prNumber,
+    createdAt: s.createdAt,
+    resolvedAt: s.resolvedAt || null,
+  }));
+}
+
 module.exports = {
   handleNewIncident,
   handleApproval,
@@ -444,4 +549,5 @@ module.exports = {
   handleUrlApproval,
   handleUrlRejection,
   getIncident,
+  getAllIncidents,
 };

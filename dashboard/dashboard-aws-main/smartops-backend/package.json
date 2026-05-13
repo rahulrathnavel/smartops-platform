@@ -10,6 +10,9 @@
     "socket.io": "^4.7.2",
     "socket.io-client": "^4.7.2",
     "@kubernetes/client-node": "^0.20.0",
+    "@aws-sdk/client-dynamodb": "^3.400.0",
+    "@aws-sdk/lib-dynamodb": "^3.400.0",
+    "node-fetch": "^2.7.0",
     "axios": "^1.6.0",
     "dotenv": "^16.3.1",
     "cors": "^2.8.5"
