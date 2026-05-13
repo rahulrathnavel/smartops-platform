@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-service
+  namespace: ammazone
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cart-service
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3003"
+        prometheus.io/path: "/metrics"
+      labels:
+        app: cart-service
+    spec:
+      containers:
+        - name: cart-service
+          image: 295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone/cart-service:latest
+          ports:
+            - containerPort: 3003
+          envFrom:
+            - configMapRef:
+                name: ammazone-config
+          resources:
+            requests: { memory: "64Mi", cpu: "50m" }
+            limits:   { memory: "128Mi", cpu: "150m" }
+          readinessProbe:
+            httpGet: { path: /health, port: 3003 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-service
+  namespace: ammazone
+spec:
+  selector:
+    app: cart-service
+  ports:
+    - port: 3003
+      targetPort: 3003

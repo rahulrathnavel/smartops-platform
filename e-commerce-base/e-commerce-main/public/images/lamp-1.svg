@@ -1,0 +1,9 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" rx="48" fill="#F8FAFF"/>
+  <rect x="120" y="120" width="960" height="660" rx="42" fill="#FFFFFF"/>
+  <rect x="420" y="220" width="360" height="320" rx="36" fill="#EEF4FF" stroke="#4361EE" stroke-width="18"/>
+  <rect x="540" y="150" width="120" height="90" rx="24" fill="#4CC9F0"/>
+  <rect x="510" y="540" width="180" height="120" rx="30" fill="#17307C"/>
+  <circle cx="600" cy="380" r="84" fill="#A9DFFA"/>
+  <text x="150" y="790" fill="#163159" font-family="Arial, sans-serif" font-size="60" font-weight="700">Studio Lamp Air</text>
+</svg>

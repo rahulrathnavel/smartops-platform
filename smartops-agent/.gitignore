@@ -1,0 +1,13 @@
+node_modules/
+# Local secrets (real credentials - never commit)
+*.local.yaml
+dist/
+.env
+*.log
+.DS_Store
+Thumbs.db
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+tfplan

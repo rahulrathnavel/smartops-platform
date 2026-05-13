@@ -1,0 +1,18 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" rx="48" fill="#F5F9FF"/>
+  <rect x="100" y="90" width="1000" height="720" rx="42" fill="#FFFFFF"/>
+  <rect x="210" y="180" width="780" height="420" rx="30" fill="#E6EEFF"/>
+  <rect x="260" y="220" width="680" height="340" rx="20" fill="url(#g1)"/>
+  <path d="M180 640H1020L950 700H250L180 640Z" fill="#C8D7FF"/>
+  <path d="M250 700H950V730C950 741.046 941.046 750 930 750H270C258.954 750 250 741.046 250 730V700Z" fill="#9DB6FF"/>
+  <circle cx="340" cy="300" r="70" fill="#4CC9F0" fill-opacity="0.24"/>
+  <circle cx="870" cy="280" r="95" fill="#4361EE" fill-opacity="0.16"/>
+  <text x="120" y="790" fill="#163159" font-family="Arial, sans-serif" font-size="62" font-weight="700">Nova 14 Side Profile</text>
+  <defs>
+    <linearGradient id="g1" x1="260" y1="220" x2="940" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EAF0FF"/>
+      <stop offset="0.5" stop-color="#8DD6F5"/>
+      <stop offset="1" stop-color="#5E7BF1"/>
+    </linearGradient>
+  </defs>
+</svg>

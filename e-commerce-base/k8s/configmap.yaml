@@ -1,0 +1,19 @@
+# ConfigMap - non-sensitive configuration
+# Values marked PLACEHOLDER will be populated by deploy script from terraform output
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ammazone-config
+  namespace: ammazone
+data:
+  NODE_ENV: "production"
+  AWS_REGION: "ap-south-1"
+  DYNAMODB_TABLE: "ammazone-payments"
+  OTEL_COLLECTOR_URL: "http://otel-collector:4317"
+  USER_SERVICE_URL: "http://user-service:3001"
+  CATALOG_SERVICE_URL: "http://catalog-service:3002"
+  CART_SERVICE_URL: "http://cart-service:3003"
+  PAYMENT_SERVICE_URL: "http://payment-service:3004"
+  ORDER_SERVICE_URL: "http://order-service:3005"
+  REDIS_URL: "redis://redis:6379"
+  RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672"

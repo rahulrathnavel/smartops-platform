@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: ammazone
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        5
+        Log_Level    info
+        Parsers_File /fluent-bit/etc/parsers.conf
+
+    [INPUT]
+        Name             tail
+        Tag              kube.*
+        Path             /var/log/containers/*ammazone*.log
+        Parser           docker
+        Refresh_Interval 10
+        Mem_Buf_Limit    5MB
+
+    [FILTER]
+        Name   kubernetes
+        Match  kube.*
+        Kube_URL         https://kubernetes.default.svc:443
+        Merge_Log        On
+
+    [OUTPUT]
+        Name                cloudwatch_logs
+        Match               kube.*
+        region              ap-south-1
+        log_group_name      /aws/eks/ammazone-eks/containers
+        log_stream_prefix   ammazone/
+        auto_create_group   true
+
+  parsers.conf: |
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%LZ
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: ammazone
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+    spec:
+      serviceAccountName: default
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: fluent-bit
+          image: public.ecr.aws/aws-observability/aws-for-fluent-bit:stable
+          resources:
+            requests: { cpu: "10m", memory: "32Mi" }
+            limits: { cpu: "50m", memory: "64Mi" }
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+            - name: config
+              mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+            - name: config
+              mountPath: /fluent-bit/etc/parsers.conf
+              subPath: parsers.conf
+      volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: config
+          configMap:
+            name: fluent-bit-config

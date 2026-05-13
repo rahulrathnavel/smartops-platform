@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smartops-config
+  namespace: smartops-system
+data:
+  SLACK_CHANNEL_ID: "C0B2SEMEWEA"
+  AUDIT_S3_BUCKET: "smartops-audit-295284356306"
+  AUDIT_LOG_GROUP: "/smartops/agent/audit"
+  AUDIT_LOG_STREAM: "agent-main"
+  SQS_QUEUE_URL: "https://sqs.ap-south-1.amazonaws.com/295284356306/smartops-alarm-queue"
+  EKS_LOG_GROUP: "/aws/eks/ammazone-eks/containers"
+  AWS_REGION: "ap-south-1"

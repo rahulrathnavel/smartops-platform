@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+  namespace: ammazone
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-service
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3002"
+        prometheus.io/path: "/metrics"
+      labels:
+        app: catalog-service
+    spec:
+      containers:
+        - name: catalog-service
+          image: 295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone/catalog-service:latest
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: ammazone-config
+          env:
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: ammazone-secrets
+                  key: COSMOS_CATALOG_URI
+          resources:
+            requests: { memory: "64Mi", cpu: "50m" }
+            limits:   { memory: "128Mi", cpu: "150m" }
+          readinessProbe:
+            httpGet: { path: /health, port: 3002 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+  namespace: ammazone
+spec:
+  selector:
+    app: catalog-service
+  ports:
+    - port: 3002
+      targetPort: 3002

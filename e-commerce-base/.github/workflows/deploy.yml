@@ -1,0 +1,74 @@
+name: Deploy Ammazone Services
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'e-commerce-main/**'
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REGISTRY: 295284356306.dkr.ecr.ap-south-1.amazonaws.com
+  EKS_CLUSTER: ammazone-eks
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.changes.outputs.services }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: changes
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^(services/|e-commerce-main/)' | cut -d'/' -f2 | sort -u | tr '\n' ',')
+          echo "services=${CHANGED%,}" >> $GITHUB_OUTPUT
+
+  build-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push changed services
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ needs.detect-changes.outputs.services }}"
+          for svc in "${SERVICES[@]}"; do
+            if [ -d "services/$svc" ]; then
+              echo "Building services/$svc..."
+              docker build -t $ECR_REGISTRY/ammazone/$svc:latest services/$svc
+              docker push $ECR_REGISTRY/ammazone/$svc:latest
+            elif [ "$svc" = "e-commerce-main" ] || [ "$svc" = "src" ]; then
+              echo "Building frontend..."
+              docker build -t $ECR_REGISTRY/ammazone/frontend:latest e-commerce-main
+              docker push $ECR_REGISTRY/ammazone/frontend:latest
+            fi
+          done
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER
+
+      - name: Restart changed deployments
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ needs.detect-changes.outputs.services }}"
+          for svc in "${SERVICES[@]}"; do
+            if [ "$svc" = "e-commerce-main" ] || [ "$svc" = "src" ]; then
+              kubectl rollout restart deployment frontend -n ammazone 2>/dev/null || true
+            else
+              kubectl rollout restart deployment $svc -n ammazone 2>/dev/null || true
+            fi
+          done

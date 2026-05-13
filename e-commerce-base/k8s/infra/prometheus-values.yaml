@@ -1,0 +1,68 @@
+# Minimal kube-prometheus-stack values for SmartOps
+# Disables Grafana and Alertmanager (we have our own dashboard + Slack alerts)
+
+grafana:
+  enabled: false
+
+alertmanager:
+  enabled: false
+
+# Prometheus server config
+prometheus:
+  prometheusSpec:
+    retention: 6h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 300m
+        memory: 384Mi
+    # Scrape all ServiceMonitors in any namespace
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    # Scrape pods with prometheus.io annotations
+    additionalScrapeConfigs:
+      - job_name: 'ammazone-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['ammazone']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: replace
+            target_label: service
+
+# Node exporter for host-level metrics
+nodeExporter:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+# Kube-state-metrics for pod/deployment status
+kubeStateMetrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi

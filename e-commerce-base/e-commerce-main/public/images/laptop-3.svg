@@ -1,0 +1,19 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" rx="48" fill="#F8FAFF"/>
+  <rect x="100" y="90" width="1000" height="720" rx="42" fill="url(#panel)"/>
+  <rect x="240" y="170" width="720" height="470" rx="36" fill="#182C63"/>
+  <rect x="270" y="200" width="660" height="410" rx="26" fill="url(#display)"/>
+  <rect x="180" y="650" width="840" height="34" rx="17" fill="#BECFFF"/>
+  <text x="130" y="780" fill="#163159" font-family="Arial, sans-serif" font-size="62" font-weight="700">Nova 14 Display Detail</text>
+  <defs>
+    <linearGradient id="panel" x1="100" y1="90" x2="1100" y2="810" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E8F2FF"/>
+    </linearGradient>
+    <linearGradient id="display" x1="270" y1="200" x2="930" y2="610" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4CC9F0"/>
+      <stop offset="0.45" stop-color="#4361EE"/>
+      <stop offset="1" stop-color="#1F2B7A"/>
+    </linearGradient>
+  </defs>
+</svg>

@@ -1,0 +1,9 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" rx="48" fill="#F3F8FF"/>
+  <circle cx="600" cy="450" r="260" fill="#E4EEFF"/>
+  <rect x="470" y="180" width="260" height="440" rx="70" fill="#243A7B"/>
+  <rect x="510" y="220" width="180" height="220" rx="24" fill="#A8D9F8"/>
+  <rect x="520" y="100" width="160" height="110" rx="40" fill="#4CC9F0"/>
+  <rect x="520" y="600" width="160" height="200" rx="40" fill="#4CC9F0"/>
+  <text x="160" y="790" fill="#163159" font-family="Arial, sans-serif" font-size="58" font-weight="700">Recovery Insights Display</text>
+</svg>

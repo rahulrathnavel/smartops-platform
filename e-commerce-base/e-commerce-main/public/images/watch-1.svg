@@ -1,0 +1,10 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" rx="48" fill="#F8FAFF"/>
+  <rect x="100" y="100" width="1000" height="700" rx="42" fill="#FFFFFF"/>
+  <rect x="460" y="180" width="280" height="420" rx="70" fill="#17307C"/>
+  <rect x="500" y="220" width="200" height="170" rx="28" fill="url(#watch)"/>
+  <rect x="520" y="110" width="160" height="90" rx="40" fill="#4361EE"/>
+  <rect x="520" y="600" width="160" height="190" rx="40" fill="#4361EE"/>
+  <text x="130" y="780" fill="#163159" font-family="Arial, sans-serif" font-size="62" font-weight="700">Pulse Fit Pro Watch</text>
+  <defs><linearGradient id="watch" x1="500" y1="220" x2="700" y2="390"><stop stop-color="#4CC9F0"/><stop offset="1" stop-color="#4361EE"/></linearGradient></defs>
+</svg>

@@ -1,0 +1,10 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" rx="48" fill="#F8FAFF"/>
+  <rect x="100" y="100" width="1000" height="700" rx="40" fill="#FFFFFF"/>
+  <circle cx="450" cy="420" r="150" fill="#17307C"/>
+  <circle cx="750" cy="420" r="150" fill="#17307C"/>
+  <circle cx="450" cy="420" r="90" fill="#4361EE" fill-opacity="0.45"/>
+  <circle cx="750" cy="420" r="90" fill="#4361EE" fill-opacity="0.45"/>
+  <path d="M395 270C395 210 475 150 600 150C725 150 805 210 805 270" stroke="#3A0CA3" stroke-width="34" stroke-linecap="round"/>
+  <text x="120" y="770" fill="#163159" font-family="Arial, sans-serif" font-size="58" font-weight="700">Aurora X1 Premium Finish</text>
+</svg>

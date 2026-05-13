@@ -1,0 +1,9 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" rx="48" fill="#F4F8FF"/>
+  <rect x="120" y="110" width="960" height="680" rx="40" fill="#EAF0FF"/>
+  <circle cx="600" cy="420" r="220" fill="#D7E5FF"/>
+  <circle cx="470" cy="420" r="130" fill="#243A7B"/>
+  <circle cx="730" cy="420" r="130" fill="#243A7B"/>
+  <path d="M430 320C430 230 500 170 600 170C700 170 770 230 770 320" stroke="#4CC9F0" stroke-width="40" stroke-linecap="round"/>
+  <text x="140" y="770" fill="#163159" font-family="Arial, sans-serif" font-size="60" font-weight="700">Spatial Audio Detail</text>
+</svg>

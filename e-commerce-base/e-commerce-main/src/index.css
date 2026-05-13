@@ -1,0 +1,80 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap");
+@import "tailwindcss";
+
+:root {
+  --color-primary: #4361ee;
+  --color-secondary: #3a0ca3;
+  --color-accent: #4cc9f0;
+  --color-bg: #f8f9fa;
+  --color-surface: rgba(255, 255, 255, 0.88);
+  --color-text: #1f2937;
+  --color-text-soft: #5b6473;
+  --color-border: rgba(67, 97, 238, 0.12);
+  --color-warning: #f72585;
+  --shadow-soft: 0 24px 60px rgba(31, 41, 55, 0.08);
+}
+
+@theme {
+  --font-sans: "Manrope", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+}
+
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top left, rgba(76, 201, 240, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(67, 97, 238, 0.12), transparent 24%),
+    var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+* { box-sizing: border-box; }
+a { color: inherit; text-decoration: none; }
+.glass-panel {
+  background: var(--color-surface);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-soft);
+}
+.section-title {
+  font-family: var(--font-display);
+  letter-spacing: -0.04em;
+}
+.text-balance { text-wrap: balance; }
+.mesh-bg {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(76, 201, 240, 0.22), transparent 30%),
+    radial-gradient(circle at 80% 0%, rgba(67, 97, 238, 0.10), transparent 22%),
+    linear-gradient(135deg, rgba(67, 97, 238, 0.12), rgba(58, 12, 163, 0.06));
+}
+.card-shine { position: relative; overflow: hidden; }
+.card-shine::before {
+  content: "";
+  position: absolute;
+  inset: -150% auto auto -20%;
+  height: 220px;
+  width: 120px;
+  rotate: 20deg;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  transition: transform 0.6s ease;
+  pointer-events: none;
+}
+.card-shine:hover::before { transform: translateX(360px); }
+.noise-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.15;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: radial-gradient(circle at center, black, transparent 80%);
+}
+input,
+select,
+textarea,
+button { font: inherit; }
