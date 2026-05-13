@@ -31,8 +31,8 @@ Write-Host ""
 
 # 1. ECR login
 Write-Host "[1/4] Authenticating to ECR..." -ForegroundColor Yellow
-$ecrPwd = aws ecr get-login-password --region $REGION --profile $AWS_PROFILE
-docker login --username AWS --password $ecrPwd "$ECR_BASE" 2>$null
+aws ecr get-login-password --region $REGION --profile $AWS_PROFILE |
+    docker login --username AWS --password-stdin "$ECR_BASE" 2>&1 | Out-Null
 Write-Host "  OK" -ForegroundColor Green
 
 # 2. Build

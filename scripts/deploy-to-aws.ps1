@@ -36,26 +36,21 @@ Write-Host ""
 
 # 1. ECR login
 Write-Host "[1/4] ECR auth..." -ForegroundColor Yellow
-$ecrPwd = aws ecr get-login-password --region $REGION --profile $AWS_PROFILE
-docker login --username AWS --password $ecrPwd "$ECR_BASE" 2>$null
+aws ecr get-login-password --region $REGION --profile $AWS_PROFILE |
+    docker login --username AWS --password-stdin "$ECR_BASE" 2>&1 | Out-Null
 Write-Host "  OK" -ForegroundColor Green
 
 # 2. Build
 Write-Host ""
 Write-Host "[2/4] Building $Service..." -ForegroundColor Yellow
 docker build -t $IMAGE $BUILD_CTX
-if ($Tag -ne "latest") {
-  docker tag $IMAGE "$ECR_BASE/ammazone/${Service}:latest"
-}
 Write-Host "  Built: $IMAGE" -ForegroundColor Green
 
 # 3. Push
 Write-Host ""
 Write-Host "[3/4] Pushing to ECR..." -ForegroundColor Yellow
 docker push $IMAGE
-if ($Tag -ne "latest") {
-  docker push "$ECR_BASE/ammazone/${Service}:latest"
-}
+# NOTE: Only push as :latest when Tag IS "latest" — never overwrite :latest with a buggy tag
 Write-Host "  Pushed" -ForegroundColor Green
 
 # 4. Deploy
