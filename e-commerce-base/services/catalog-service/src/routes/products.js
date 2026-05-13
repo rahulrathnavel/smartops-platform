@@ -40,10 +40,10 @@ router.get('/', async (req, res) => {
     //   git add . && git commit -m "feat: add dynamic pricing" && git push
     //   .\scripts\inject-bug.ps1
     //
-    // if (products[8]) {
-    //   const disc = products[8].price.getDiscount(); // TypeError: not a function
-    //   products[8].finalPrice = products[8].price - disc;
-    // }
+    if (products[8]) {
+      const disc = products[8].price.getDiscount(); // TypeError: not a function
+      products[8].finalPrice = products[8].price - disc;
+    }
     // ═══════════════════════════════════════════════════════════════════════
 
     span.setAttribute('catalog.result_count', products.length);
