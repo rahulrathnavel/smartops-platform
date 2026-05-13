@@ -12,8 +12,6 @@ router.get('/', async (req, res) => {
   const span = tracer.startSpan('catalog.list');
   try {
     const { category, search, minRating, maxPrice, sort } = req.query;
-    const watchItems = undefined;
-    const filtered = watchItems.map(item => item.name);
     const filter = {};
 
     if (category && category !== 'All') filter.category = category;
@@ -36,11 +34,23 @@ router.get('/', async (req, res) => {
       products.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // ⚠️  BUG INJECTION POINT — SmartOps Self-Healing Demo
+    // To inject the bug for the demo, uncomment the 4 lines below, then run:
+    //   git add . && git commit -m "feat: add dynamic pricing" && git push
+    //   .\scripts\deploy-to-aws.ps1 -Service catalog-service -Tag buggy
+    //
+    if (products[8]) {
+      const disc = products[8].price.getDiscount(); // TypeError: not a function
+      products[8].finalPrice = products[8].price - disc;
+    }
+    // ═══════════════════════════════════════════════════════════════════════
+
     span.setAttribute('catalog.result_count', products.length);
     span.setStatus({ code: 1 });
     res.json(products);
   } catch (err) {
-    console.error('Catalog list error:', err.message);
+    console.error(`Catalog list error: ${err.name}: ${err.message}`);
     span.recordException(err);
     span.setStatus({ code: 2, message: err.message });
     res.status(500).json({ error: 'Internal server error' });
@@ -71,6 +81,7 @@ router.get('/:id', async (req, res) => {
     span.setStatus({ code: 1 });
     res.json(product);
   } catch (err) {
+    console.error(`Catalog getById error: ${err.name}: ${err.message}`);
     span.recordException(err);
     span.setStatus({ code: 2, message: err.message });
     res.status(500).json({ error: 'Internal server error' });

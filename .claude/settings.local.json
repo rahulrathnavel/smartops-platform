@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(aws --version)",
+      "Bash(kubectl version *)",
+      "Bash(terraform version *)",
+      "Bash(docker --version)",
+      "Bash(helm version *)"
+    ]
+  }
+}

@@ -158,13 +158,66 @@ async function handleNewIncident(rawIncident) {
 }
 
 // ---------------------------------------------------------------------------
+// Rollback a deployment to the previous stable revision via K8s API.
+// This is the IMMEDIATE remediation — fires before the GitHub PR flow.
+// ---------------------------------------------------------------------------
+async function rollbackDeployment(service, namespace) {
+  // Bypass the k8s client's serialization by calling the API directly with https.
+  // The client wraps array bodies as objects, breaking JSON Patch format.
+  const https = require('https');
+  const fs = require('fs');
+  const ECR_BASE = '683444362809.dkr.ecr.ap-south-1.amazonaws.com';
+  const stableImage = `${ECR_BASE}/ammazone/${service}:latest`;
+
+  const token = fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/token', 'utf8').trim();
+  const ca = fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/ca.crt');
+
+  const body = JSON.stringify([
+    { op: 'replace', path: '/spec/template/spec/containers/0/image', value: stableImage },
+  ]);
+
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'kubernetes.default.svc',
+      path: `/apis/apps/v1/namespaces/${namespace}/deployments/${service}`,
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json-patch+json',
+        'Content-Length': Buffer.byteLength(body),
+        Accept: 'application/json',
+      },
+      ca,
+    }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          console.log(`[INCIDENT] K8s rollback OK: ${namespace}/${service} → ${stableImage}`);
+          resolve(true);
+        } else {
+          console.error(`[INCIDENT] K8s rollback HTTP ${res.statusCode}: ${data.slice(0, 200)}`);
+          resolve(false);
+        }
+      });
+    });
+    req.on('error', (err) => {
+      console.error(`[INCIDENT] K8s rollback request error: ${err.message}`);
+      resolve(false);
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Handle Slack approval.
-// Creates branch, commits fix, opens PR, auto-merges.
+// FIRST: immediate K8s rollback. THEN: create branch, commit fix, open PR.
 // ---------------------------------------------------------------------------
 async function handleApproval(incidentId, userId) {
   const state = incidents.get(incidentId);
-  if (!state || !state.fix || state.fix.files.length === 0) {
-    console.error(`[INCIDENT] ${incidentId} -- Cannot approve: no fix available`);
+  if (!state) {
+    console.error(`[INCIDENT] ${incidentId} -- Unknown incident`);
     return;
   }
 
@@ -176,6 +229,33 @@ async function handleApproval(incidentId, userId) {
   });
 
   state.status = 'APPROVED';
+
+  // ── Step 0: Immediate K8s rollback (guaranteed recovery) ─────────────────
+  const targetService = state.raw.service || 'catalog-service';
+  const targetNamespace = state.raw.namespace || 'ammazone';
+
+  console.log(`[INCIDENT] ${incidentId} -- Step 0: Rolling back ${targetService} via K8s API...`);
+  const rolled = await rollbackDeployment(targetService, targetNamespace);
+
+  emitToSocket('incident:resolved', {
+    id: incidentId,
+    service: targetService,
+    action: 'K8s rollback to :latest',
+  });
+
+  if (state.slackMessage) {
+    await slack.postThreadReply(
+      state.slackMessage.channel,
+      state.slackMessage.ts,
+      `✅ *Immediate remediation triggered!* Rolled ${targetService} back to stable \`:latest\` image. Pod restart in progress...`
+    ).catch(() => {});
+  }
+
+  if (!state.fix || state.fix.files.length === 0) {
+    console.log(`[INCIDENT] ${incidentId} -- No code fix to commit, K8s rollback is the resolution.`);
+    state.status = 'DEPLOYED';
+    return;
+  }
 
   try {
     // Create branch

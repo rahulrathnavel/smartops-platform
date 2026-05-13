@@ -14,20 +14,15 @@ const PORT = process.env.PORT || 3000;
 const log = (level, msg, extra = {}) =>
   console.log(JSON.stringify({ level, service: 'api-gateway', ts: new Date().toISOString(), msg, ...extra }));
 
-// Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: '*', credentials: true }));
 
-// Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'api-gateway' }));
 app.get('/metrics', metricsHandler);
-
-// Parse JSON bodies for analytics endpoint
-app.use(express.json());
 app.use(metricsMiddleware('api-gateway'));
 
-// Analytics / tracking endpoint — logs every user interaction
-app.post('/api/analytics/track', (req, res) => {
+// Analytics endpoint — express.json() is scoped here only, NOT before proxy routes
+app.post('/api/analytics/track', express.json(), (req, res) => {
   const { event, ...data } = req.body || {};
   log('info', `[ANALYTICS] ${event}`, {
     event,
@@ -38,16 +33,16 @@ app.post('/api/analytics/track', (req, res) => {
   res.json({ ok: true });
 });
 
-// Service URLs from environment
 const SERVICES = {
-  '/api/auth':     process.env.USER_SERVICE_URL     || 'http://user-service:3001',
-  '/api/products': process.env.CATALOG_SERVICE_URL  || 'http://catalog-service:3002',
-  '/api/cart':     process.env.CART_SERVICE_URL      || 'http://cart-service:3003',
-  '/api/payments': process.env.PAYMENT_SERVICE_URL  || 'http://payment-service:3004',
-  '/api/orders':   process.env.ORDER_SERVICE_URL    || 'http://order-service:3005',
+  '/api/auth':     process.env.USER_SERVICE_URL    || 'http://user-service:3001',
+  '/api/products': process.env.CATALOG_SERVICE_URL || 'http://catalog-service:3002',
+  '/api/cart':     process.env.CART_SERVICE_URL    || 'http://cart-service:3003',
+  '/api/payments': process.env.PAYMENT_SERVICE_URL || 'http://payment-service:3004',
+  '/api/orders':   process.env.ORDER_SERVICE_URL   || 'http://order-service:3005',
 };
 
-// Trace-propagating proxy for each service route
+// Proxy routes registered BEFORE any body-parsing middleware — this keeps the
+// request stream intact so http-proxy-middleware can forward the body to downstream services.
 Object.entries(SERVICES).forEach(([path, target]) => {
   app.use(
     path,
@@ -57,7 +52,6 @@ Object.entries(SERVICES).forEach(([path, target]) => {
       pathRewrite: { [`^${path}`]: '' },
       on: {
         proxyReq: (proxyReq, req) => {
-          // Propagate trace context to downstream services
           const activeContext = context.active();
           const headers = {};
           propagation.inject(activeContext, headers);
@@ -66,6 +60,13 @@ Object.entries(SERVICES).forEach(([path, target]) => {
           });
           log('info', `Proxying ${req.method} ${req.originalUrl} -> ${target}`, {
             traceId: trace.getSpan(activeContext)?.spanContext()?.traceId,
+            status: null,
+          });
+        },
+        proxyRes: (proxyRes, req) => {
+          log('info', `Response ${proxyRes.statusCode} for ${req.method} ${req.originalUrl}`, {
+            status: proxyRes.statusCode,
+            service: target,
           });
         },
         error: (err, req, res) => {

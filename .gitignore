@@ -19,6 +19,9 @@ schema_dump.txt
 myCred.txt
 secrets.local.yaml
 **/secrets.local.yaml
+# K8s secret manifests with real tokens
+secrets.yaml
+**/k8s/secrets.yaml
 
 # Terraform variables (contains account IDs)
 terraform.tfvars

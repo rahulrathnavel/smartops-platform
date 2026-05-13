@@ -70,7 +70,7 @@ async function setupConsumers(channel) {
 
 async function start() {
   try {
-    await mongoose.connect(MONGO_URI, { tls: true, retryWrites: false, directConnection: false });
+    await mongoose.connect(MONGO_URI, { tls: process.env.MONGO_TLS !== 'false', retryWrites: false, directConnection: false });
     log('info', 'Connected to Cosmos DB (MongoDB API)');
 
     const channel = await rabbit.connect();

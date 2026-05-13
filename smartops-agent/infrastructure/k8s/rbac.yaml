@@ -1,21 +1,24 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: smartops-pod-reader
+  name: smartops-operator
 rules:
   - apiGroups: [""]
-    resources: ["pods", "pods/log"]
+    resources: ["pods", "pods/log", "namespaces"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: smartops-pod-reader-binding
+  name: smartops-operator-binding
 subjects:
   - kind: ServiceAccount
-    name: default
+    name: smartops-agent-sa
     namespace: smartops-system
 roleRef:
   kind: ClusterRole
-  name: smartops-pod-reader
+  name: smartops-operator
   apiGroup: rbac.authorization.k8s.io

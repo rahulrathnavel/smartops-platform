@@ -27,7 +27,7 @@ app.use('/', authRoutes);
 async function start() {
   try {
     await mongoose.connect(MONGO_URI, {
-      tls: true,
+      tls: process.env.MONGO_TLS !== 'false',
       retryWrites: false,
       directConnection: false,
     });

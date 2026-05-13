@@ -26,7 +26,7 @@ app.use('/', productRoutes);
 
 async function start() {
   try {
-    await mongoose.connect(MONGO_URI, { tls: true, retryWrites: false, directConnection: false });
+    await mongoose.connect(MONGO_URI, { tls: process.env.MONGO_TLS !== 'false', retryWrites: false, directConnection: false });
     log('info', 'Connected to Cosmos DB (MongoDB API)');
     app.listen(PORT, () => log('info', `Catalog Service listening on port ${PORT}`));
   } catch (err) {

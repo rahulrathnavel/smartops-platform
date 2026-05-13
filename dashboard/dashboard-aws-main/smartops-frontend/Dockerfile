@@ -14,6 +14,7 @@ server {
     listen 80;
     root /usr/share/nginx/html;
     index index.html;
+    resolver 172.20.0.10 valid=10s;
 
     # SPA routing
     location / {
@@ -22,7 +23,8 @@ server {
 
     # Proxy WebSocket connections to dashboard-backend
     location /socket.io/ {
-        proxy_pass http://dashboard-backend:4000;
+        set $backend http://dashboard-backend.smartops-system.svc.cluster.local:4000;
+        proxy_pass $backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -35,7 +37,8 @@ server {
 
     # Proxy REST API calls to dashboard-backend
     location /health-backend {
-        proxy_pass http://dashboard-backend:4000/health;
+        set $backend http://dashboard-backend.smartops-system.svc.cluster.local:4000;
+        proxy_pass $backend/health;
     }
 
     # Static assets caching
