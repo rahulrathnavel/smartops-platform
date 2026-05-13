@@ -36,14 +36,14 @@ router.get('/', async (req, res) => {
 
     // ═══════════════════════════════════════════════════════════════════════
     // ⚠️  BUG INJECTION POINT — SmartOps Self-Healing Demo
-    // To inject the bug for the demo, uncomment the 4 lines below, then run:
+    // To inject the bug: uncomment the 4 lines below, then run:
     //   git add . && git commit -m "feat: add dynamic pricing" && git push
-    //   .\scripts\deploy-to-aws.ps1 -Service catalog-service -Tag buggy
+    //   .\scripts\inject-bug.ps1
     //
-    if (products[8]) {
-      const disc = products[8].price.getDiscount(); // TypeError: not a function
-      products[8].finalPrice = products[8].price - disc;
-    }
+    // if (products[8]) {
+    //   const disc = products[8].price.getDiscount(); // TypeError: not a function
+    //   products[8].finalPrice = products[8].price - disc;
+    // }
     // ═══════════════════════════════════════════════════════════════════════
 
     span.setAttribute('catalog.result_count', products.length);
