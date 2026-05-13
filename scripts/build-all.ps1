@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $ROOT = Split-Path -Parent $PSScriptRoot
 $ECR = "683444362809.dkr.ecr.ap-south-1.amazonaws.com"
 $REGION = "ap-south-1"
-$PROFILE = "praveen"
+$PROFILE = "sabari25"
 
 Write-Host "`n========== BUILD ALL IMAGES ==========" -ForegroundColor Cyan
 

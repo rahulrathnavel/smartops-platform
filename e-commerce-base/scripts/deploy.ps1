@@ -14,7 +14,7 @@ $K8S_DIR = "$ROOT\k8s"
 $SERVICES_DIR = "$ROOT\services"
 $FRONTEND_DIR = "$ROOT\e-commerce-main"
 
-$AWS_PROFILE = "praveen"
+$AWS_PROFILE = "sabari25"
 $AWS_REGION = "ap-south-1"
 $AWS_ACCOUNT_ID = "683444362809"
 $ECR_BASE = "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"

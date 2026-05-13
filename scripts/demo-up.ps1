@@ -11,7 +11,7 @@ $DASH_DIR = "$ROOT\dashboard\dashboard-aws-main"
 $AGENT_DIR = "$ROOT\smartops-agent"
 $ECR = "683444362809.dkr.ecr.ap-south-1.amazonaws.com/ammazone"
 $REGION = "ap-south-1"
-$PROFILE = "praveen"
+$PROFILE = "sabari25"
 
 Write-Host "`n========== SMARTOPS DEMO-UP ==========" -ForegroundColor Cyan
 
