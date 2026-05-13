@@ -323,7 +323,7 @@ aws eks update-kubeconfig --name ammazone-eks --region ap-south-1 --profile <you
 
 ```powershell
 cd ../..
-$REGISTRY = "295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone"
+$REGISTRY = "683444362809.dkr.ecr.ap-south-1.amazonaws.com/ammazone"
 
 aws ecr get-login-password --region ap-south-1 --profile <your-profile> | docker login --username AWS --password-stdin $REGISTRY
 

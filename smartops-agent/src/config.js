@@ -50,7 +50,7 @@ const config = {
   // -- AWS --
   aws: {
     region: process.env.AWS_REGION || 'ap-south-1',
-    s3Bucket: process.env.AUDIT_S3_BUCKET || 'smartops-audit-295284356306',
+    s3Bucket: process.env.AUDIT_S3_BUCKET || 'smartops-audit-683444362809',
     cloudwatchLogGroup: process.env.AUDIT_LOG_GROUP || '/smartops/agent/audit',
     cloudwatchLogStream: process.env.AUDIT_LOG_STREAM || 'agent-main',
     sqsQueueUrl: process.env.SQS_QUEUE_URL || '',

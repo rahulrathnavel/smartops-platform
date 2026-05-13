@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: cart-service
-          image: 295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone/cart-service:latest
+          image: 683444362809.dkr.ecr.ap-south-1.amazonaws.com/ammazone/cart-service:latest
           ports:
             - containerPort: 3003
           envFrom:

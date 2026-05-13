@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: catalog-service
-          image: 295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone/catalog-service:latest
+          image: 683444362809.dkr.ecr.ap-south-1.amazonaws.com/ammazone/catalog-service:latest
           ports:
             - containerPort: 3002
           envFrom:

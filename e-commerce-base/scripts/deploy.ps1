@@ -16,7 +16,7 @@ $FRONTEND_DIR = "$ROOT\e-commerce-main"
 
 $AWS_PROFILE = "praveen"
 $AWS_REGION = "ap-south-1"
-$AWS_ACCOUNT_ID = "295284356306"
+$AWS_ACCOUNT_ID = "683444362809"
 $ECR_BASE = "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
 Write-Host "`n========================================" -ForegroundColor Cyan

@@ -9,7 +9,7 @@ $TF_DIR = "$ROOT\e-commerce-base\infrastructure\terraform"
 $K8S_DIR = "$ROOT\e-commerce-base\k8s"
 $DASH_DIR = "$ROOT\dashboard\dashboard-aws-main"
 $AGENT_DIR = "$ROOT\smartops-agent"
-$ECR = "295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone"
+$ECR = "683444362809.dkr.ecr.ap-south-1.amazonaws.com/ammazone"
 $REGION = "ap-south-1"
 $PROFILE = "praveen"
 

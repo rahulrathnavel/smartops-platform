@@ -9,7 +9,7 @@ on:
 
 env:
   AWS_REGION: ap-south-1
-  ECR_REGISTRY: 295284356306.dkr.ecr.ap-south-1.amazonaws.com
+  ECR_REGISTRY: 683444362809.dkr.ecr.ap-south-1.amazonaws.com
   EKS_CLUSTER: ammazone-eks
 
 jobs:

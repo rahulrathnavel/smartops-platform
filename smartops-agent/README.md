@@ -131,9 +131,9 @@ Update `infrastructure/k8s/configmap.yaml` with:
 
 ```powershell
 cd r:\zzz_last_smartops\smartops-agent
-aws ecr get-login-password --region ap-south-1 --profile praveen | docker login --username AWS --password-stdin 295284356306.dkr.ecr.ap-south-1.amazonaws.com
-docker build -t 295284356306.dkr.ecr.ap-south-1.amazonaws.com/smartops-agent:latest .
-docker push 295284356306.dkr.ecr.ap-south-1.amazonaws.com/smartops-agent:latest
+aws ecr get-login-password --region ap-south-1 --profile praveen | docker login --username AWS --password-stdin 683444362809.dkr.ecr.ap-south-1.amazonaws.com
+docker build -t 683444362809.dkr.ecr.ap-south-1.amazonaws.com/smartops-agent:latest .
+docker push 683444362809.dkr.ecr.ap-south-1.amazonaws.com/smartops-agent:latest
 ```
 
 ### Step 4: Deploy to EKS
@@ -176,10 +176,10 @@ aws logs tail /smartops/agent/audit --follow --profile praveen --region ap-south
 aws logs filter-log-events --log-group-name /smartops/agent/audit --filter-pattern "{$.incident_id = \"INC-20260510-001\"}" --profile praveen --region ap-south-1
 
 # View LLM prompt for an incident step
-aws s3 cp s3://smartops-audit-295284356306/incidents/INC-20260510-001/step1-prompt.json - --profile praveen
+aws s3 cp s3://smartops-audit-683444362809/incidents/INC-20260510-001/step1-prompt.json - --profile praveen
 
 # View LLM response
-aws s3 cp s3://smartops-audit-295284356306/incidents/INC-20260510-001/step3-response.json - --profile praveen
+aws s3 cp s3://smartops-audit-683444362809/incidents/INC-20260510-001/step3-response.json - --profile praveen
 ```
 
 ## Audit Ledger Schema

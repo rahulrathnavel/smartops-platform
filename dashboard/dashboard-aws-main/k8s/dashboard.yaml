@@ -18,7 +18,7 @@ spec:
       serviceAccountName: smartops-agent-sa
       containers:
         - name: dashboard-backend
-          image: 295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone/smartops-dashboard-backend:latest
+          image: 683444362809.dkr.ecr.ap-south-1.amazonaws.com/ammazone/smartops-dashboard-backend:latest
           ports:
             - containerPort: 4000
           env:
@@ -65,7 +65,7 @@ spec:
     spec:
       containers:
         - name: dashboard-frontend
-          image: 295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone/smartops-dashboard-frontend:latest
+          image: 683444362809.dkr.ecr.ap-south-1.amazonaws.com/ammazone/smartops-dashboard-frontend:latest
           ports:
             - containerPort: 80
           resources:

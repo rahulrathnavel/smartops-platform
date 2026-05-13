@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: 295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone/user-service:latest
+          image: 683444362809.dkr.ecr.ap-south-1.amazonaws.com/ammazone/user-service:latest
           ports:
             - containerPort: 3001
           envFrom:

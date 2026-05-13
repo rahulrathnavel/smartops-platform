@@ -6,7 +6,7 @@
 
 $ErrorActionPreference = "Stop"
 $ROOT = Split-Path -Parent $PSScriptRoot
-$ECR = "295284356306.dkr.ecr.ap-south-1.amazonaws.com"
+$ECR = "683444362809.dkr.ecr.ap-south-1.amazonaws.com"
 $REGION = "ap-south-1"
 $PROFILE = "praveen"
 

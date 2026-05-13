@@ -38,7 +38,7 @@ Write-Host "ECR URL: $ECR_URL" -ForegroundColor Green
 # ── STEP 3: Build and Push Agent Docker Image (~2 min) ───────────
 Write-Host "`n[STEP 3] Building and pushing agent Docker image..." -ForegroundColor Yellow
 Set-Location "r:\zzz_last_smartops\smartops-agent"
-aws ecr get-login-password --region ap-south-1 --profile sabari25 | docker login --username AWS --password-stdin 295284356306.dkr.ecr.ap-south-1.amazonaws.com
+aws ecr get-login-password --region ap-south-1 --profile sabari25 | docker login --username AWS --password-stdin 683444362809.dkr.ecr.ap-south-1.amazonaws.com
 docker build -t "${ECR_URL}:latest" .
 docker push "${ECR_URL}:latest"
 

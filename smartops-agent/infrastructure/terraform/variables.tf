@@ -31,5 +31,5 @@ variable "eks_node_role_name" {
 variable "account_id" {
   description = "AWS account ID"
   type        = string
-  default     = "295284356306"
+  default     = "683444362809"
 }
