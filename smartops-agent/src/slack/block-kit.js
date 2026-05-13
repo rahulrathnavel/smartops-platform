@@ -5,7 +5,7 @@
 // Creates rich, interactive messages for incident notifications.
 // ---------------------------------------------------------------------------
 
-function buildIncidentMessage(incidentId, diagnosis, fix) {
+function buildIncidentMessage(incidentId, diagnosis, fix, approveUrl, rejectUrl) {
   const severityEmoji = {
     CRITICAL: ':red_circle:',
     HIGH: ':large_orange_circle:',
@@ -49,41 +49,25 @@ function buildIncidentMessage(incidentId, diagnosis, fix) {
     },
     { type: 'divider' },
     {
-      type: 'actions',
-      block_id: `incident_actions_${incidentId}`,
-      elements: [
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Approve & Deploy', emoji: true },
-          style: 'primary',
-          action_id: 'approve_fix',
-          value: incidentId,
-          confirm: {
-            title: { type: 'plain_text', text: 'Confirm Deployment' },
-            text: { type: 'mrkdwn', text: 'This will push the fix to the repo, create a PR, auto-merge, and trigger a deployment. Continue?' },
-            confirm: { type: 'plain_text', text: 'Deploy' },
-            deny: { type: 'plain_text', text: 'Cancel' },
-          },
-        },
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Reject', emoji: true },
-          style: 'danger',
-          action_id: 'reject_fix',
-          value: incidentId,
-        },
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Suggest Changes', emoji: true },
-          action_id: 'suggest_fix',
-          value: incidentId,
-        },
-      ],
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          '*:white_check_mark:  Click to approve and auto-heal:*',
+          `>  <${approveUrl}|*Approve & Deploy Fix*>`,
+          '',
+          '*:x:  Click to reject:*',
+          `>  <${rejectUrl}|Reject>`,
+        ].join('\n'),
+      },
     },
     {
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: `SmartOps Agent | ${new Date().toISOString()} | Reply with \`@smartops-agent <suggestion>\` to refine the fix` },
+        {
+          type: 'mrkdwn',
+          text: `SmartOps Agent | ${new Date().toISOString()} | Links open in browser — no Slack app config needed`,
+        },
       ],
     },
   ];

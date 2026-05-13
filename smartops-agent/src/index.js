@@ -3,7 +3,7 @@
 const { config, validateConfig } = require('./config');
 const { createServer } = require('./server');
 const { startDetectionLoop } = require('./core/incident-detector');
-const { handleNewIncident } = require('./core/incident-manager');
+const { handleNewIncident, handleUrlApproval, handleUrlRejection } = require('./core/incident-manager');
 const { handleInteraction } = require('./slack/interaction-handler');
 const { handlePushWebhook } = require('./indexer/webhook-handler');
 const { indexFullRepo } = require('./indexer/code-indexer');
@@ -43,7 +43,9 @@ async function main() {
   // -----------------------------------------------------------------------
   const app = createServer({
     interactionHandler: handleInteraction,
-    webhookHandler: handlePushWebhook,
+    webhookHandler:     handlePushWebhook,
+    approvalHandler:    handleUrlApproval,
+    rejectionHandler:   handleUrlRejection,
   });
 
   // Create HTTP server and attach Socket.IO for dashboard communication

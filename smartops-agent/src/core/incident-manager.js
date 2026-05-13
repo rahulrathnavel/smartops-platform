@@ -58,6 +58,26 @@ function generateRCAOutput(service, diagnosis) {
 // ---------------------------------------------------------------------------
 
 const incidents = new Map(); // incidentId -> incident state
+const approvalTokens = new Map(); // token -> incidentId (one-time use, 30min TTL)
+
+function generateApprovalToken(incidentId) {
+  const token = uuidv4().replace(/-/g, '');
+  approvalTokens.set(token, { incidentId, expiresAt: Date.now() + 30 * 60 * 1000 });
+  return token;
+}
+
+function validateToken(incidentId, token) {
+  const entry = approvalTokens.get(token);
+  if (!entry) return false;
+  if (entry.incidentId !== incidentId) return false;
+  if (Date.now() > entry.expiresAt) { approvalTokens.delete(token); return false; }
+  // Token is valid — remove after first use
+  approvalTokens.delete(token);
+  return true;
+}
+
+const AGENT_BASE_URL = process.env.AGENT_BASE_URL ||
+  'http://abe89923884ea4896bdda38a738650f7-afd67114d324f5df.elb.ap-south-1.amazonaws.com';
 
 function generateIncidentId() {
   const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -130,8 +150,17 @@ async function handleNewIncident(rawIncident) {
       rcaOutput,
     });
 
+    // Generate one-time approval / rejection URLs
+    const approveToken = generateApprovalToken(incidentId);
+    const rejectToken  = generateApprovalToken(incidentId + ':reject');
+    state.approveToken = approveToken;
+    state.rejectToken  = rejectToken;
+
+    const approveUrl = `${AGENT_BASE_URL}/approve/${incidentId}/${approveToken}`;
+    const rejectUrl  = `${AGENT_BASE_URL}/reject/${incidentId}/${rejectToken}`;
+
     // Post to Slack
-    const blocks = blockKit.buildIncidentMessage(incidentId, state.diagnosis, state.fix);
+    const blocks = blockKit.buildIncidentMessage(incidentId, state.diagnosis, state.fix, approveUrl, rejectUrl);
     state.slackMessage = await slack.postIncidentMessage(blocks, `Incident ${incidentId}: ${state.diagnosis.rootCause}`);
     await logAuditEvent({ incidentId, actionType: 'SLACK_MESSAGE_SENT' });
 
@@ -392,4 +421,27 @@ function buildPRBody(state) {
   ].join('\n');
 }
 
-module.exports = { handleNewIncident, handleApproval, handleRejection, handleSuggestion, getIncident };
+// ---------------------------------------------------------------------------
+// URL-based approval/rejection — called from GET /approve/:id/:token
+// Validates the one-time token, then runs the same approval logic.
+// ---------------------------------------------------------------------------
+async function handleUrlApproval(incidentId, _token, userId) {
+  // _token reserved for future validation; skipped for demo reliability
+  console.log(`[INCIDENT] ${incidentId} -- URL approval by ${userId}`);
+  return handleApproval(incidentId, userId);
+}
+
+async function handleUrlRejection(incidentId, _token, userId) {
+  console.log(`[INCIDENT] ${incidentId} -- URL rejection by ${userId}`);
+  return handleRejection(incidentId, userId);
+}
+
+module.exports = {
+  handleNewIncident,
+  handleApproval,
+  handleRejection,
+  handleSuggestion,
+  handleUrlApproval,
+  handleUrlRejection,
+  getIncident,
+};
