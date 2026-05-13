@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: result-portal-monitor
+  labels:
+    release: kube-prom
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - default
+  selector:
+    matchLabels:
+      app: aurcc-backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

@@ -1,0 +1,88 @@
+# SmartOps Dashboard — Backend + Frontend + LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-backend
+  namespace: smartops-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard-backend
+  template:
+    metadata:
+      labels:
+        app: dashboard-backend
+    spec:
+      serviceAccountName: smartops-agent-sa
+      containers:
+        - name: dashboard-backend
+          image: 295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone/smartops-dashboard-backend:latest
+          ports:
+            - containerPort: 4000
+          env:
+            - name: PORT
+              value: "4000"
+            - name: PROMETHEUS_URL
+              value: "http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+            - name: AGENT_WS_URL
+              value: "http://smartops-agent.smartops-system.svc.cluster.local:3000"
+          resources:
+            requests: { memory: "64Mi", cpu: "50m" }
+            limits:   { memory: "256Mi", cpu: "200m" }
+          readinessProbe:
+            httpGet: { path: /health, port: 4000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-backend
+  namespace: smartops-system
+spec:
+  selector:
+    app: dashboard-backend
+  ports:
+    - port: 4000
+      targetPort: 4000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-frontend
+  namespace: smartops-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard-frontend
+  template:
+    metadata:
+      labels:
+        app: dashboard-frontend
+    spec:
+      containers:
+        - name: dashboard-frontend
+          image: 295284356306.dkr.ecr.ap-south-1.amazonaws.com/ammazone/smartops-dashboard-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests: { memory: "32Mi", cpu: "25m" }
+            limits:   { memory: "128Mi", cpu: "100m" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-frontend
+  namespace: smartops-system
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  type: LoadBalancer
+  selector:
+    app: dashboard-frontend
+  ports:
+    - port: 80
+      targetPort: 80

@@ -1,0 +1,35 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+Thumbs.db
+
+# Terraform state (contains secrets)
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+tfplan
+
+# Local scratch
+schema_dump.txt
+
+# Credentials — NEVER commit these
+myCred.txt
+secrets.local.yaml
+**/secrets.local.yaml
+
+# Terraform variables (contains account IDs)
+terraform.tfvars
+
+# Presentation files
+*.pptx
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE files
+.vscode/
+.idea/
