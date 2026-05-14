@@ -41,6 +41,18 @@ server {
         proxy_pass $backend/health;
     }
 
+    # Proxy all /api/ REST calls to dashboard-backend (incident history, active incidents)
+    location /api/ {
+        set $backend http://dashboard-backend.smartops-system.svc.cluster.local:4000;
+        proxy_pass $backend$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Connection "";
+        proxy_read_timeout 30s;
+    }
+
     # Static assets caching
     location ~* \.(jpg|jpeg|png|gif|ico|svg|css|js|woff|woff2)$ {
         expires 7d;

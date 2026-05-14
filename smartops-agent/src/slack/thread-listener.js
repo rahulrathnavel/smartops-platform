@@ -1,66 +1,67 @@
 'use strict';
 
-const slack = require('../integrations/slack-client');
+const slack          = require('../integrations/slack-client');
 const incidentManager = require('../core/incident-manager');
-const { config } = require('../config');
 
 // ---------------------------------------------------------------------------
-// Thread Listener.
-// Polls Slack threads for @mention replies containing suggestions.
-// Triggers a fix re-generation when a suggestion is found.
+// Thread Listener — polls active incident Slack threads every 15 seconds.
+// Recognises: "suggest: <text>" or "1" (approve) or "2" (reject) typed in thread.
 // ---------------------------------------------------------------------------
 
-const processedReplies = new Set(); // Track processed message timestamps
+const seen = new Set(); // processed message ts values
 
-// ---------------------------------------------------------------------------
-// Check all active incidents for new thread replies.
-// ---------------------------------------------------------------------------
-async function checkForSuggestions() {
-  // This is called periodically from the main loop.
-  // We only check incidents in AWAITING_APPROVAL status.
-  // In a real production system, this would use Slack Events API instead of polling.
+async function pollAllThreads() {
+  const incidents = incidentManager.getAllIncidents();
+  for (const inc of incidents) {
+    if (inc.status !== 'awaiting_approval') continue;
 
-  // For now, this is a no-op placeholder.
-  // The actual suggestion flow is triggered by the "Suggest Changes" button
-  // in the interaction handler, which posts a prompt in the thread.
-  // The SRE then replies with their suggestion.
-  // We detect this via the Events API or manual polling.
-}
+    const full = incidentManager.getIncident(inc.id);
+    if (!full?.slackMessage?.channel || !full?.slackMessage?.ts) continue;
 
-// ---------------------------------------------------------------------------
-// Process a thread reply that mentions the bot.
-// Called when we detect an @mention in a thread.
-// ---------------------------------------------------------------------------
-async function processThreadReply(channel, threadTs, userMessage, userId) {
-  // Find which incident this thread belongs to
-  // by matching the threadTs with incident slack messages
-  let targetIncident = null;
+    try {
+      const replies = await slack.getThreadReplies(full.slackMessage.channel, full.slackMessage.ts);
+      for (const msg of replies) {
+        if (seen.has(msg.ts))  continue;
+        if (!msg.text)         continue;
+        if (msg.bot_id)        continue; // skip our own messages
 
-  // Search through active incidents
-  for (const [id, incident] of Object.entries(incidentManager)) {
-    if (typeof incident === 'object' && incident?.slackMessage?.ts === threadTs) {
-      targetIncident = incident;
-      break;
+        seen.add(msg.ts);
+
+        const text = msg.text.trim().toLowerCase();
+
+        if (text === '1' || text === 'approve' || text === 'yes') {
+          console.log(`[THREAD] Approve for ${inc.id} from ${msg.user}`);
+          await slack.postThreadReply(full.slackMessage.channel, full.slackMessage.ts,
+            `Approval received from <@${msg.user}>. Rolling back service now...`);
+          incidentManager.handleApproval(inc.id, msg.user).catch(e =>
+            console.error('[THREAD] Approval error:', e.message));
+
+        } else if (text === '2' || text === 'reject' || text === 'no') {
+          console.log(`[THREAD] Reject for ${inc.id} from ${msg.user}`);
+          incidentManager.handleRejection(inc.id, msg.user).catch(e =>
+            console.error('[THREAD] Rejection error:', e.message));
+
+        } else if (text.startsWith('suggest:') || text.startsWith('suggest ')) {
+          const suggestion = msg.text.replace(/^suggest:?\s*/i, '').trim();
+          if (suggestion.length >= 5) {
+            console.log(`[THREAD] Suggestion for ${inc.id}: "${suggestion.substring(0, 80)}"`);
+            await slack.postThreadReply(full.slackMessage.channel, full.slackMessage.ts,
+              `Suggestion received. Regenerating fix based on: "${suggestion.substring(0, 100)}"...`);
+            incidentManager.handleSuggestion(inc.id, suggestion, msg.user).catch(e =>
+              console.error('[THREAD] Suggestion error:', e.message));
+          }
+        }
+      }
+    } catch (err) {
+      // Silently skip — thread may not exist or API rate limited
     }
   }
-
-  if (!targetIncident) {
-    console.warn('[THREAD] Could not find incident for thread:', threadTs);
-    return;
-  }
-
-  // Strip the bot mention from the message
-  const suggestion = userMessage
-    .replace(/<@[A-Z0-9]+>/g, '')
-    .trim();
-
-  if (suggestion.length < 5) {
-    await slack.postThreadReply(channel, threadTs, 'Suggestion too short. Please provide more detail.');
-    return;
-  }
-
-  console.log(`[THREAD] Processing suggestion for ${targetIncident.id}: "${suggestion.substring(0, 100)}"`);
-  await incidentManager.handleSuggestion(targetIncident.id, suggestion, userId);
 }
 
-module.exports = { checkForSuggestions, processThreadReply };
+function startThreadListener() {
+  console.log('[THREAD] Slack thread listener started (polling every 15s)');
+  setInterval(pollAllThreads, 15_000);
+  pollAllThreads(); // run immediately
+}
+
+module.exports = { startThreadListener, pollAllThreads };

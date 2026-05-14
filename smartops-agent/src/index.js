@@ -4,6 +4,7 @@ const { config, validateConfig } = require('./config');
 const { createServer } = require('./server');
 const { startDetectionLoop } = require('./core/incident-detector');
 const { handleNewIncident, handleUrlApproval, handleUrlRejection, getAllIncidents } = require('./core/incident-manager');
+const { startThreadListener } = require('./slack/thread-listener');
 const { handleInteraction } = require('./slack/interaction-handler');
 const { handlePushWebhook } = require('./indexer/webhook-handler');
 const { indexFullRepo } = require('./indexer/code-indexer');
@@ -89,6 +90,9 @@ async function main() {
   indexFullRepo().catch((err) => {
     console.error('[MAIN] Initial indexing failed:', err.message);
   });
+
+  // 5. Start Slack thread listener (approve/reject/suggest via thread replies)
+  startThreadListener();
 
   console.log('[MAIN] SmartOps Agent is running.');
   console.log(`[MAIN] Monitoring: ${config.aws.eksLogGroup}`);

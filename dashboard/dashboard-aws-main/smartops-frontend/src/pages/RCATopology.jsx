@@ -102,25 +102,39 @@ export default function RCATopology() {
     ctx.clearRect(0, 0, W, H);
     phaseRef.current += 0.025;
     const pulse = Math.sin(phaseRef.current) * 0.5 + 0.5;
+    const flowT = (phaseRef.current * 0.6) % 1; // 0..1 particle position along edge
 
     // Background
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, W, H);
 
-    // Edges
+    // Edges — darker base lines + animated flow particles
     EDGES.forEach(([from, to]) => {
       const a = SERVICES.find(s => s.id === from);
       const b = SERVICES.find(s => s.id === to);
       if (!a || !b) return;
       const affected = affectedNodes.has(from) && affectedNodes.has(to);
+
+      // Edge line
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
       ctx.strokeStyle = affected
-        ? `rgba(220,38,38,${0.35 + pulse * 0.45})`
-        : 'rgba(148,163,184,0.3)';
-      ctx.lineWidth = affected ? 2 : 1;
+        ? `rgba(220,38,38,${0.5 + pulse * 0.4})`
+        : 'rgba(71,85,105,0.45)';    // slate-600 at 45% — visibly dark
+      ctx.lineWidth = affected ? 2.5 : 1.5;
       ctx.stroke();
+
+      // Flow particle — animated dot travelling from→to
+      const t = affected ? (phaseRef.current * 0.8 % 1) : flowT;
+      const px = a.x + (b.x - a.x) * t;
+      const py = a.y + (b.y - a.y) * t;
+      ctx.beginPath();
+      ctx.arc(px, py, affected ? 4 : 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = affected
+        ? `rgba(220,38,38,${0.7 + pulse * 0.3})`
+        : 'rgba(37,99,235,0.55)';   // blue-600 for healthy flow
+      ctx.fill();
     });
 
     // Nodes

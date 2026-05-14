@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle, XCircle, MessageSquare, RefreshCw } from 'lucide-react';
 
-const BACKEND = 'http://a838f4250b43e4d0489cd64ba2e22216-d3b0776ea4ad5d48.elb.ap-south-1.amazonaws.com';
+// Use relative URL — nginx proxies /api/ to the backend in the same pod
+const BACKEND = '';
 
 const EVENT_CONFIG = {
   DETECTED:   { label: 'Detected',   color: '#dc2626', bg: '#fef2f2' },

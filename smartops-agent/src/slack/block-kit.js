@@ -1,33 +1,33 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Slack Block Kit message builders — professional format, no emoji.
+// Slack Block Kit message builders.
+// Buttons use type "button" with a url field — clicking opens the browser.
+// This avoids the 3-second Slack webhook timeout entirely since no interaction
+// payload is sent to our server. The user clicks, browser opens, action fires.
 // ---------------------------------------------------------------------------
 
-const SEVERITY_LABEL = { CRITICAL: 'CRITICAL', HIGH: 'HIGH', MEDIUM: 'MEDIUM', LOW: 'LOW' };
-
 function buildIncidentMessage(incidentId, diagnosis, fix, approveUrl, rejectUrl) {
-  const diffPreview = fix.files
-    .map((f) => `${f.path}\n${f.explanation || 'Updated'}`)
-    .join('\n\n')
-    .substring(0, 2500);
+  const sev = diagnosis.severity || 'MEDIUM';
 
-  const sev = SEVERITY_LABEL[diagnosis.severity] || 'MEDIUM';
+  const diffPreview = (fix.files || [])
+    .map(f => `${f.path}\n${f.explanation || 'Updated'}`)
+    .join('\n\n')
+    .substring(0, 2000);
 
   return [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `${incidentId}  |  ${sev}`, emoji: false },
+      text: { type: 'plain_text', text: `${incidentId}  |  ${sev} Severity`, emoji: false },
     },
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
         text: [
-          `*[${sev}] Incident Detected*`,
-          `*Service:*     \`${diagnosis.service}\``,
-          `*Error Type:*  \`${diagnosis.errorType}\``,
-          `*Root Cause:*  ${diagnosis.rootCause}`,
+          `*Service:*  \`${diagnosis.service}\``,
+          `*Error:*    \`${diagnosis.errorType}\``,
+          `*Diagnosis:* ${diagnosis.rootCause}`,
         ].join('\n'),
       },
     },
@@ -36,10 +36,10 @@ function buildIncidentMessage(incidentId, diagnosis, fix, approveUrl, rejectUrl)
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*Proposed Fix* (${fix.files?.length || 0} file${fix.files?.length !== 1 ? 's' : ''}):\n${fix.summary || 'See details below'}`,
+        text: `*Proposed Fix* (${fix.files?.length || 0} file${fix.files?.length !== 1 ? 's' : ''}):\n${fix.summary || 'AI-generated code fix'}`,
       },
     },
-    {
+    fix.files?.length > 0 && {
       type: 'section',
       text: { type: 'mrkdwn', text: `\`\`\`\n${diffPreview}\n\`\`\`` },
     },
@@ -48,26 +48,41 @@ function buildIncidentMessage(incidentId, diagnosis, fix, approveUrl, rejectUrl)
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: [
-          '*Action required — click a link below:*',
-          '',
-          `*[APPROVE]* — Roll back to stable and apply fix: <${approveUrl}|Approve and Deploy>`,
-          `*[REJECT]* — Skip this fix, manual action needed: <${rejectUrl}|Reject>`,
-          '',
-          'Or reply in thread with: `suggest: <your change request>`',
-        ].join('\n'),
+        text: '*Click a button below to respond. Opens in your browser — no timeout.*',
+      },
+    },
+    // Buttons with url field — opens browser directly, no webhook timeout
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Approve and Deploy', emoji: false },
+          style: 'primary',
+          url: approveUrl,
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Reject', emoji: false },
+          style: 'danger',
+          url: rejectUrl,
+        },
+      ],
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `To suggest a code change, reply in this thread:\n*suggest: <your request>*\nExample: \`suggest: rename getDiscount to applyPricingRule\``,
       },
     },
     {
       type: 'context',
       elements: [
-        {
-          type: 'mrkdwn',
-          text: `SmartOps Agent  |  ${new Date().toISOString()}  |  Links open in browser`,
-        },
+        { type: 'mrkdwn', text: `SmartOps Agent  |  ${new Date().toISOString()}  |  Buttons open browser, no timeout` },
       ],
     },
-  ];
+  ].filter(Boolean);
 }
 
 function buildApprovedMessage(incidentId, diagnosis, prNumber) {
@@ -81,10 +96,10 @@ function buildApprovedMessage(incidentId, diagnosis, prNumber) {
       text: {
         type: 'mrkdwn',
         text: [
-          `*[RESOLVED] Fix Approved and Deployed*`,
-          `*Service:*     \`${diagnosis.service}\``,
-          `*Root Cause:*  ${diagnosis.rootCause}`,
-          prNumber ? `*PR:*          #${prNumber} (merged)` : '',
+          `*[APPROVED] Fix Deployed*`,
+          `*Service:*    \`${diagnosis.service}\``,
+          `*Root Cause:* ${diagnosis.rootCause}`,
+          prNumber ? `*PR:*         #${prNumber} (merged)` : '',
         ].filter(Boolean).join('\n'),
       },
     },
@@ -102,10 +117,10 @@ function buildRejectedMessage(incidentId, diagnosis) {
       text: {
         type: 'mrkdwn',
         text: [
-          `*[REJECTED] Fix Rejected by SRE*`,
-          `*Service:*  \`${diagnosis.service}\``,
-          `*Root Cause:*  ${diagnosis.rootCause}`,
-          'The proposed fix was not applied. Manual intervention required.',
+          `*[REJECTED] Fix Not Applied*`,
+          `*Service:*    \`${diagnosis.service}\``,
+          `*Root Cause:* ${diagnosis.rootCause}`,
+          'Manual intervention required.',
         ].join('\n'),
       },
     },
@@ -123,10 +138,9 @@ function buildErrorMessage(incidentId, rawIncident, errorMsg) {
       text: {
         type: 'mrkdwn',
         text: [
-          `*[ERROR] SmartOps Agent encountered an error*`,
-          `*Service:*  \`${rawIncident.service || 'unknown'}\``,
-          `*Error:*    ${errorMsg}`,
-          'Manual investigation required.',
+          `*[ERROR] Agent pipeline failed*`,
+          `*Service:* \`${rawIncident.service || 'unknown'}\``,
+          `*Error:*   ${errorMsg}`,
         ].join('\n'),
       },
     },
@@ -146,9 +160,7 @@ function buildSuggestionAppliedMessage(incidentId, diagnosis, fix) {
         text: [
           `*[REVISED] Fix updated based on your suggestion*`,
           `*Service:*  \`${diagnosis.service}\``,
-          `*New Fix:*  ${fix.summary || fix.commitMessage}`,
-          '',
-          'Reply `approve` to deploy or `suggest: <new change>` to refine further.',
+          `*New fix:*  ${fix.summary || fix.commitMessage}`,
         ].join('\n'),
       },
     },
