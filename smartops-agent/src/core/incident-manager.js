@@ -168,7 +168,10 @@ async function handleNewIncident(rawIncident) {
     // Step 1: Diagnose
     state.status = 'DIAGNOSING';
     console.log(`[INCIDENT] ${incidentId} -- Step 1: Diagnosing...`);
-    state.diagnosis = await diagnose(incidentId, rawIncident.errorLog);
+    state.diagnosis = await diagnose(
+      incidentId, rawIncident.errorLog,
+      rawIncident.errorType, rawIncident.severity
+    );
     console.log(`[INCIDENT] ${incidentId} -- Diagnosis: ${state.diagnosis.rootCause}`);
 
     // Step 2: Locate context

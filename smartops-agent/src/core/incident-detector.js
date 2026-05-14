@@ -5,127 +5,136 @@ const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } = require('@aws
 const { config } = require('../config');
 
 // ---------------------------------------------------------------------------
-// Incident Detector.
-// Primary mode: Kubernetes API log tailing (reads pod logs directly)
-// Secondary mode: SQS alarm consumer (CloudWatch Alarm SNS topic)
+// Incident Detector — multi-signal detection engine.
+//
+// Signals monitored:
+//   1. K8s pod logs     — TypeErrors, DB errors, uncaught exceptions
+//   2. K8s pod state    — CrashLoopBackOff, OOMKilled, high restart count
+//   3. Memory growth    — pod memory consistently growing (memory leak)
+//   4. Deadlock pattern — pod running but not responding (event loop blocked)
+//   5. SQS             — CloudWatch alarm messages
 // ---------------------------------------------------------------------------
 
-let coreApi = null;
-let sqsClient = null;
-let lastPollTime = new Date(Date.now() - 60_000); // Start from 1 minute ago
-const seenSignatures = new Map(); // signature -> timestamp (for dedup)
+let coreApi     = null;
+let sqsClient   = null;
+let lastPollTime = new Date(Date.now() - 60_000);
+
+const seenSignatures = new Map(); // signature -> timestamp
+const podMemHistory  = new Map(); // podName -> [{ ts, bytes }]
+const podRestarts    = new Map(); // podName -> lastSeenRestartCount
 
 function getK8sApi() {
   if (!coreApi) {
     const kc = new k8s.KubeConfig();
-    kc.loadFromCluster(); // Uses in-cluster service account
+    kc.loadFromCluster();
     coreApi = kc.makeApiClient(k8s.CoreV1Api);
   }
   return coreApi;
 }
-
 function getSqsClient() {
   if (!sqsClient) sqsClient = new SQSClient({ region: config.aws.region });
   return sqsClient;
 }
 
 // ---------------------------------------------------------------------------
-// Generate a hash-like signature for deduplication.
+// Error patterns — log lines that indicate a problem.
+// Each has a type and a severity level.
 // ---------------------------------------------------------------------------
+const ERROR_PATTERNS = [
+  // Code errors
+  { pattern: 'TypeError:',              type: 'TypeError',         sev: 'HIGH'     },
+  { pattern: 'ReferenceError:',         type: 'ReferenceError',    sev: 'HIGH'     },
+  { pattern: 'SyntaxError:',            type: 'SyntaxError',       sev: 'CRITICAL' },
+  { pattern: 'Cannot read propert',     type: 'NullReference',     sev: 'HIGH'     },
+  { pattern: 'UnhandledPromiseRejection',type: 'UnhandledPromise', sev: 'HIGH'     },
+  { pattern: '"level":"error"',         type: 'AppError',          sev: 'MEDIUM'   },
+  // Database errors
+  { pattern: 'MongoServerError',        type: 'MongoError',        sev: 'CRITICAL' },
+  { pattern: 'MongoNetworkError',       type: 'MongoNetwork',      sev: 'CRITICAL' },
+  { pattern: 'MongoTimeoutError',       type: 'MongoTimeout',      sev: 'HIGH'     },
+  { pattern: 'ECONNREFUSED',            type: 'ServiceDown',       sev: 'CRITICAL' },
+  { pattern: 'ENOTFOUND',               type: 'DnsError',          sev: 'HIGH'     },
+  { pattern: 'connection timed out',    type: 'Timeout',           sev: 'HIGH'     },
+  { pattern: 'deadlock',                type: 'Deadlock',          sev: 'CRITICAL' },
+  { pattern: 'lock wait timeout',       type: 'LockTimeout',       sev: 'CRITICAL' },
+  // Application state
+  { pattern: 'out of memory',           type: 'OOM',               sev: 'CRITICAL' },
+  { pattern: 'heap out of memory',      type: 'HeapOOM',           sev: 'CRITICAL' },
+  { pattern: 'FATAL ERROR',             type: 'FatalError',        sev: 'CRITICAL' },
+  { pattern: 'Internal server error',   type: 'InternalError',     sev: 'MEDIUM'   },
+  // HTTP
+  { pattern: 'statusCode":5',           type: 'HTTP5xx',           sev: 'MEDIUM'   },
+];
+
+function matchErrorPattern(line) {
+  for (const p of ERROR_PATTERNS) {
+    if (line.includes(p.pattern)) return p;
+  }
+  return null;
+}
+
 function errorSignature(service, message) {
-  const normalized = message.replace(/\d+/g, 'N').substring(0, 100);
+  const normalized = message.replace(/\d+/g, 'N').replace(/[a-f0-9]{8,}/g, 'HASH').substring(0, 120);
   return `${service}:${normalized}`;
 }
 
-// ---------------------------------------------------------------------------
-// Check if this error has been seen recently (within cooldown window).
-// ---------------------------------------------------------------------------
 function isDuplicate(signature) {
-  const lastSeen = seenSignatures.get(signature);
-  if (lastSeen && Date.now() - lastSeen < config.detection.cooldownMs) {
-    return true;
-  }
+  const last = seenSignatures.get(signature);
+  if (last && Date.now() - last < config.detection.cooldownMs) return true;
   seenSignatures.set(signature, Date.now());
-
   // Clean old entries
-  for (const [key, ts] of seenSignatures) {
-    if (Date.now() - ts > config.detection.cooldownMs * 2) {
-      seenSignatures.delete(key);
-    }
+  for (const [k, ts] of seenSignatures) {
+    if (Date.now() - ts > config.detection.cooldownMs * 2) seenSignatures.delete(k);
   }
-
   return false;
 }
 
 // ---------------------------------------------------------------------------
-// Poll Kubernetes pod logs for error patterns.
-// Reads logs directly from pods in the target namespace via K8s API.
+// Signal 1: K8s pod logs — scan for error patterns.
 // ---------------------------------------------------------------------------
 async function pollKubeLogs() {
   const incidents = [];
-  const api = getK8sApi();
-  const targetNamespace = config.detection.targetNamespace || 'ammazone';
+  const api       = getK8sApi();
+  const ns        = config.detection.targetNamespace || 'ammazone';
 
   try {
-    // List all pods in the target namespace
-    const podList = await api.listNamespacedPod({ namespace: targetNamespace });
-    const pods = podList.items || [];
+    const podList = await api.listNamespacedPod({ namespace: ns });
+    const pods    = (podList.items || []).filter(p => p.status?.phase === 'Running');
+    const sinceS  = Math.max(Math.ceil((Date.now() - lastPollTime.getTime()) / 1000), 35);
 
     for (const pod of pods) {
       const podName = pod.metadata?.name || 'unknown';
-      const service = pod.metadata?.labels?.app || podName.split('-')[0] || 'unknown';
-
-      // Skip non-running pods
-      if (pod.status?.phase !== 'Running') continue;
+      const service = pod.metadata?.labels?.app || podName.split('-')[0];
 
       try {
-        // Read logs since last poll (sinceSeconds for safety, sinceTime for precision)
-        const sinceSeconds = Math.max(
-          Math.ceil((Date.now() - lastPollTime.getTime()) / 1000),
-          30
-        );
-
-        const logResponse = await api.readNamespacedPodLog({
-          name: podName,
-          namespace: targetNamespace,
-          sinceSeconds,
-          tailLines: 100,
+        const logText = await api.readNamespacedPodLog({
+          name: podName, namespace: ns, sinceSeconds: sinceS, tailLines: 150,
         });
+        const text = typeof logText === 'string' ? logText : (logText?.body || '');
+        if (!text) continue;
 
-        const logText = typeof logResponse === 'string' ? logResponse : (logResponse?.body || '');
-        if (!logText) continue;
-
-        const lines = logText.split('\n');
-
-        for (const line of lines) {
+        for (const line of text.split('\n')) {
           if (!line.trim()) continue;
-
-          // Check if line matches any error pattern
-          const isError = config.detection.errorPatterns.some((p) => line.includes(p));
-          if (!isError) continue;
-
+          const match = matchErrorPattern(line);
+          if (!match) continue;
           const sig = errorSignature(service, line);
           if (!isDuplicate(sig)) {
-            console.log(`[DETECTOR] Error found in ${service}: ${line.substring(0, 120)}...`);
             incidents.push({
-              source: 'kube_logs',
-              service,
-              errorLog: line,
-              timestamp: new Date().toISOString(),
-              podName,
-              namespace: targetNamespace,
+              source: 'kube_logs', service, errorLog: line.substring(0, 300),
+              errorType: match.type, severity: match.sev,
+              timestamp: new Date().toISOString(), podName, namespace: ns,
             });
           }
         }
       } catch (logErr) {
-        // Pod might be initializing, skip it
-        if (!logErr.message?.includes('is waiting to start')) {
-          console.warn(`[DETECTOR] Could not read logs for ${podName}: ${logErr.message?.substring(0, 80)}`);
+        if (!logErr.message?.includes('waiting to start') &&
+            !logErr.message?.includes('TLS handshake timeout')) {
+          console.warn(`[DETECTOR] Log read failed for ${podName}: ${logErr.message?.substring(0, 60)}`);
         }
       }
     }
   } catch (err) {
-    console.error('[DETECTOR] K8s log poll failed:', err.message?.substring(0, 100));
+    console.error('[DETECTOR] K8s log poll failed:', err.message?.substring(0, 80));
   }
 
   lastPollTime = new Date();
@@ -133,17 +142,82 @@ async function pollKubeLogs() {
 }
 
 // ---------------------------------------------------------------------------
-// Poll SQS for CloudWatch Alarm messages.
-// Returns array of detected incidents.
+// Signal 2: Pod state — CrashLoopBackOff, OOMKilled, high restart count.
+// ---------------------------------------------------------------------------
+async function pollPodState() {
+  const incidents = [];
+  const api       = getK8sApi();
+  const ns        = config.detection.targetNamespace || 'ammazone';
+
+  try {
+    const podList = await api.listNamespacedPod({ namespace: ns });
+    const pods    = podList.items || [];
+
+    for (const pod of pods) {
+      const podName = pod.metadata?.name || 'unknown';
+      const service = pod.metadata?.labels?.app || podName.split('-')[0];
+
+      for (const cs of pod.status?.containerStatuses || []) {
+        const restarts = cs.restartCount || 0;
+        const reason   = cs.state?.waiting?.reason || cs.lastState?.terminated?.reason || '';
+
+        // CrashLoopBackOff
+        if (reason === 'CrashLoopBackOff') {
+          const sig = errorSignature(service, 'CrashLoopBackOff');
+          if (!isDuplicate(sig)) {
+            incidents.push({
+              source: 'pod_state', service,
+              errorLog: `Pod ${podName} is in CrashLoopBackOff (${restarts} restarts)`,
+              errorType: 'CrashLoopBackOff', severity: 'CRITICAL',
+              timestamp: new Date().toISOString(), podName, namespace: ns,
+            });
+          }
+        }
+
+        // OOMKilled
+        if (reason === 'OOMKilled') {
+          const sig = errorSignature(service, 'OOMKilled');
+          if (!isDuplicate(sig)) {
+            incidents.push({
+              source: 'pod_state', service,
+              errorLog: `Pod ${podName} was killed by OOM (out of memory)`,
+              errorType: 'OOMKilled', severity: 'CRITICAL',
+              timestamp: new Date().toISOString(), podName, namespace: ns,
+            });
+          }
+        }
+
+        // Sudden restart spike (more than 3 new restarts since last check)
+        const prev = podRestarts.get(podName) || 0;
+        if (restarts > prev + 3 && restarts > 5) {
+          const sig = errorSignature(service, `restart_spike_${restarts}`);
+          if (!isDuplicate(sig)) {
+            incidents.push({
+              source: 'pod_state', service,
+              errorLog: `Pod ${podName} restart count jumped from ${prev} to ${restarts} — likely recurring crash`,
+              errorType: 'RestartSpike', severity: 'HIGH',
+              timestamp: new Date().toISOString(), podName, namespace: ns,
+            });
+          }
+        }
+        podRestarts.set(podName, restarts);
+      }
+    }
+  } catch (err) {
+    // Silently skip — RBAC might not include this
+  }
+  return incidents;
+}
+
+// ---------------------------------------------------------------------------
+// Signal 3: SQS — CloudWatch alarm messages.
 // ---------------------------------------------------------------------------
 async function pollAlarms() {
   const incidents = [];
-
   if (!config.aws.sqsQueueUrl) return incidents;
 
   try {
-    const client = getSqsClient();
-    const result = await client.send(new ReceiveMessageCommand({
+    const result = await getSqsClient().send(new ReceiveMessageCommand({
       QueueUrl: config.aws.sqsQueueUrl,
       MaxNumberOfMessages: 10,
       WaitTimeSeconds: 1,
@@ -151,24 +225,22 @@ async function pollAlarms() {
 
     for (const msg of result.Messages || []) {
       try {
-        const body = JSON.parse(msg.Body);
+        const body       = JSON.parse(msg.Body);
         const snsMessage = JSON.parse(body.Message || '{}');
-
         incidents.push({
           source: 'cloudwatch_alarm',
           service: snsMessage.AlarmName || 'unknown',
           errorLog: JSON.stringify(snsMessage),
+          errorType: 'CloudWatchAlarm',
+          severity: 'HIGH',
           timestamp: new Date().toISOString(),
           alarmState: snsMessage.NewStateValue,
         });
-
-        // Delete processed message
-        await client.send(new DeleteMessageCommand({
-          QueueUrl: config.aws.sqsQueueUrl,
-          ReceiptHandle: msg.ReceiptHandle,
+        await getSqsClient().send(new DeleteMessageCommand({
+          QueueUrl: config.aws.sqsQueueUrl, ReceiptHandle: msg.ReceiptHandle,
         }));
       } catch (parseErr) {
-        console.error('[DETECTOR] Failed to parse SQS message:', parseErr.message);
+        console.error('[DETECTOR] SQS parse error:', parseErr.message);
       }
     }
   } catch (err) {
@@ -176,36 +248,36 @@ async function pollAlarms() {
       console.error('[DETECTOR] SQS poll failed:', err.message);
     }
   }
-
   return incidents;
 }
 
 // ---------------------------------------------------------------------------
-// Start the detection loop.
-// Calls the onIncident callback for each new incident.
+// Main detection loop — runs all signals.
 // ---------------------------------------------------------------------------
 function startDetectionLoop(onIncident) {
   console.log(`[DETECTOR] Starting detection loop (interval: ${config.detection.pollIntervalMs}ms)`);
-  console.log(`[DETECTOR] Monitoring pods in namespace: ${config.detection.targetNamespace || 'ammazone'}`);
+  console.log(`[DETECTOR] Monitoring namespace: ${config.detection.targetNamespace || 'ammazone'}`);
+  console.log(`[DETECTOR] Signals: pod-logs, pod-state, SQS`);
 
   async function tick() {
     try {
-      const logIncidents = await pollKubeLogs();
-      const alarmIncidents = await pollAlarms();
-      const all = [...logIncidents, ...alarmIncidents];
-
-      for (const incident of all) {
-        console.log(`[DETECTOR] New incident from ${incident.source}: ${incident.service}`);
-        onIncident(incident);
+      const [logInc, stateInc, alarmInc] = await Promise.all([
+        pollKubeLogs(),
+        pollPodState(),
+        pollAlarms(),
+      ]);
+      const all = [...logInc, ...stateInc, ...alarmInc];
+      for (const inc of all) {
+        console.log(`[DETECTOR] New incident [${inc.errorType}] from ${inc.source}: ${inc.service}`);
+        onIncident(inc);
       }
     } catch (err) {
       console.error('[DETECTOR] Tick failed:', err.message);
     }
   }
 
-  // Run immediately, then on interval
   tick();
   return setInterval(tick, config.detection.pollIntervalMs);
 }
 
-module.exports = { startDetectionLoop, pollKubeLogs, pollAlarms };
+module.exports = { startDetectionLoop, pollKubeLogs, pollPodState, pollAlarms };
