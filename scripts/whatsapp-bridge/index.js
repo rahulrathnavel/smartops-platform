@@ -124,38 +124,48 @@ client.on('message', async (msg) => {
   if (!entry) return;
 
   if (action === 'approve') {
-    await send(`Processing approval for ${targetId}...`);
+    await send(`Approving ${targetId}... rolling back service now.`);
     try {
-      const r = await fetch(`${AGENT_URL}/approve/${targetId}/${entry.approveToken}`, { method: 'POST' });
+      // Use the direct JSON action API — no browser needed
+      const r = await fetch(`${AGENT_URL}/action/approve/${targetId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: 'whatsapp' }),
+        timeout: 8000,
+      });
       if (r.ok) {
         pendingMap.set(targetId, { ...entry, status: 'approved' });
-        await send(`[APPROVED] ${targetId}\nRolling back service to stable image. Recovery in ~30 seconds.`);
+        await send(`Approved. Service is rolling back to stable image.\nShop will recover in ~30 seconds.`);
       } else {
-        await send(`Approval HTTP error: ${r.status}. Try the link: ${AGENT_URL}/approve/${targetId}/${entry.approveToken}`);
+        await send(`Approval returned HTTP ${r.status}. Check the dashboard.`);
       }
     } catch (err) {
       await send(`Approval failed: ${err.message}`);
     }
+
   } else if (action === 'reject') {
-    await send(`Processing rejection for ${targetId}...`);
+    await send(`Rejecting ${targetId}. No changes will be applied.`);
     try {
-      const r = await fetch(`${AGENT_URL}/reject/${targetId}/${entry.rejectToken}`, { method: 'POST' });
+      const r = await fetch(`${AGENT_URL}/action/reject/${targetId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: 'whatsapp' }),
+        timeout: 8000,
+      });
       if (r.ok) {
         pendingMap.set(targetId, { ...entry, status: 'rejected' });
-        await send(`[REJECTED] ${targetId}\nNo automated fix applied. Manual investigation required.`);
-      } else {
-        await send(`Rejection HTTP error: ${r.status}`);
+        await send(`Rejected. Manual investigation required for ${targetId}.`);
       }
     } catch (err) {
       await send(`Rejection failed: ${err.message}`);
     }
+
   } else if (action === 'suggest' && suggestion) {
-    await send(`Suggestion received for ${targetId}:\n"${suggestion}"\n\nForwarding to LLM for fix revision...`);
-    // Send suggestion to agent via the Slack interaction handler (reuse same endpoint)
+    await send(`Suggestion received:\n"${suggestion}"\n\nSending to LLM for a revised fix...`);
     try {
       const payload = JSON.stringify({
         type: 'block_actions',
-        user: { id: 'whatsapp-user', username: 'developer' },
+        user: { id: 'whatsapp-user', username: 'developer-whatsapp' },
         actions: [{ action_id: 'suggest_fix', value: targetId }],
         suggestion,
       });
@@ -163,9 +173,10 @@ client.on('message', async (msg) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `payload=${encodeURIComponent(payload)}`,
+        timeout: 8000,
       });
       if (r.ok) {
-        await send(`Suggestion submitted. LLM is generating a revised fix. You will receive a new approval request shortly.`);
+        await send(`Suggestion submitted. You will get another approval request shortly.`);
       }
     } catch (err) {
       await send(`Could not forward suggestion: ${err.message}`);

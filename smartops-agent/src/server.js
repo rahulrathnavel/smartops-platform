@@ -42,6 +42,27 @@ function createServer({ interactionHandler, webhookHandler, approvalHandler, rej
     res.json({ status: 'ok', agent: config.agentName, uptime: process.uptime() });
   });
 
+  // -- Simple JSON action API for WhatsApp bridge (no browser needed) --
+  app.post('/action/approve/:incidentId', (req, res) => {
+    const { incidentId } = req.params;
+    const actor = req.body?.actor || 'whatsapp';
+    res.json({ ok: true, incidentId, action: 'approve' });
+    setImmediate(() =>
+      approvalHandler(incidentId, 'whatsapp-token', actor)
+        .catch(e => console.error('[ACTION] approve error:', e.message))
+    );
+  });
+
+  app.post('/action/reject/:incidentId', (req, res) => {
+    const { incidentId } = req.params;
+    const actor = req.body?.actor || 'whatsapp';
+    res.json({ ok: true, incidentId, action: 'reject' });
+    setImmediate(() =>
+      rejectionHandler(incidentId, 'whatsapp-token', actor)
+        .catch(e => console.error('[ACTION] reject error:', e.message))
+    );
+  });
+
   // -- Incidents REST API (used by dashboard backend and WhatsApp bridge) --
   app.get('/incidents', (_req, res) => {
     try {
