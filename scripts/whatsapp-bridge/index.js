@@ -26,6 +26,7 @@ const client = new Client({
   authStrategy: new LocalAuth({ dataPath: '.wwebjs_auth' }),
   puppeteer: {
     headless: true,
+    protocolTimeout: 60000,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
   },
 });
@@ -37,10 +38,23 @@ client.on('qr', (qr) => {
 
 client.on('ready', async () => {
   whatsappReady = true;
-  console.log('[WhatsApp] Connected and ready.');
+  console.log('[WhatsApp] Connected and ready. Waiting 5s for page to fully load...');
 
-  // Find the target group
-  const chats = await client.getChats();
+  // Give WhatsApp Web time to finish rendering before querying chats
+  await new Promise(r => setTimeout(r, 5000));
+
+  // Retry getChats up to 3 times in case the page is still slow
+  let chats = [];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      chats = await client.getChats();
+      break;
+    } catch (err) {
+      console.warn(`[WhatsApp] getChats() attempt ${attempt} failed: ${err.message}`);
+      if (attempt < 3) await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+
   const group = chats.find(c => c.isGroup && c.name === GROUP_NAME);
   if (group) {
     targetGroupId = group.id._serialized;
@@ -48,7 +62,9 @@ client.on('ready', async () => {
     await send(`SmartOps Agent connected.\nMonitoring: ${AGENT_URL}\nGroup: ${GROUP_NAME}`);
   } else {
     console.warn(`[WhatsApp] Group "${GROUP_NAME}" not found. Create a WhatsApp group with that exact name and restart.`);
-    console.warn('[WhatsApp] Available groups:', chats.filter(c => c.isGroup).map(c => c.name).join(', '));
+    if (chats.length > 0) {
+      console.warn('[WhatsApp] Available groups:', chats.filter(c => c.isGroup).map(c => c.name).join(', '));
+    }
   }
 });
 
@@ -177,41 +193,66 @@ async function send(text) {
 // ---------------------------------------------------------------------------
 function formatIncidentAlert(inc) {
   const rca = inc.rcaOutput;
+  const sep = '─'.repeat(40);
   const lines = [
-    `--- INCIDENT: ${inc.id} ---`,
-    `Service:  ${inc.service || 'unknown'}`,
-    `Severity: ${inc.severity || 'MEDIUM'}`,
+    sep,
+    `SMARTOPS INCIDENT ALERT`,
+    `ID: ${inc.id}`,
+    `Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
+    sep,
+    '',
+    `SERVICE AFFECTED`,
+    `  ${inc.service || 'unknown'} (${inc.severity || 'MEDIUM'} severity)`,
+    '',
+    `ERROR DETECTED`,
+    `  ${(inc.errorLog || 'See agent logs').substring(0, 200)}`,
     '',
   ];
 
   if (rca) {
-    lines.push('RCA Analysis:');
-    lines.push(`  Primary:    ${rca.rootCauseNode} (${Math.round((rca.confidence || 0) * 100)}% confidence)`);
+    lines.push('RCA MODEL ANALYSIS');
+    lines.push(`  Root cause:  ${rca.rootCauseNode} — ${Math.round((rca.confidence || 0) * 100)}% confidence`);
     if (rca.propagationPath?.length > 1) {
-      lines.push(`  Affected:   ${rca.propagationPath.slice(1).join(', ')}`);
+      lines.push(`  Also affected: ${rca.propagationPath.slice(1).join(', ')}`);
+    }
+    if (rca.evidenceMetrics) {
+      const m = rca.evidenceMetrics;
+      if (m.errorRate)    lines.push(`  Error rate:  ${m.errorRate}`);
+      if (m.p95Latency)   lines.push(`  P95 latency: ${m.p95Latency}`);
     }
     lines.push('');
   }
 
   if (inc.diagnosis) {
-    lines.push('Root Cause:');
+    lines.push('LLM DIAGNOSIS');
     lines.push(`  ${inc.diagnosis}`);
     lines.push('');
   }
 
   if (inc.fix) {
-    lines.push('Proposed Fix:');
+    lines.push('PROPOSED FIX (code change)');
     lines.push(`  ${inc.fix}`);
+    lines.push('');
+    lines.push('PLAIN SUMMARY');
+    lines.push(`  The LLM identified a bug in ${inc.service} and generated`);
+    lines.push(`  a code fix. Approving will roll back the service to the`);
+    lines.push(`  last stable image and apply the fix automatically.`);
     lines.push('');
   }
 
-  lines.push('Reply with:');
-  lines.push('  1  - Approve and Deploy');
-  lines.push('  2  - Reject (manual fix needed)');
-  lines.push('  3 <your text>  - Suggest a change to the fix');
+  lines.push(sep);
+  lines.push('YOUR OPTIONS — reply with a number:');
   lines.push('');
-  lines.push(`Approval link: ${AGENT_URL}/approve/${inc.id}/TOKEN`);
-  lines.push('---');
+  lines.push('  1  Approve and Deploy');
+  lines.push('     Rolls back service + applies AI fix');
+  lines.push('');
+  lines.push('  2  Reject');
+  lines.push('     No changes — manual investigation needed');
+  lines.push('');
+  lines.push('  3 <your message>  Suggest a change');
+  lines.push('     Example: 3 rename the variable to discountValue');
+  lines.push('     LLM will regenerate the fix and ask again');
+  lines.push(sep);
 
   return lines.join('\n');
 }
