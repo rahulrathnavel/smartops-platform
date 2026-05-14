@@ -35,6 +35,9 @@ Analyse the error log and identify the root cause.
 
 Possible error categories you must handle:
 - TypeError / ReferenceError — code bug, wrong method call, null access
+- MissingEndpoint / ProxyError — HTTP 404 from internal API route. Likely
+    causes: (a) frontend calling wrong URL, (b) route was recently DELETED
+    from the backend, (c) endpoint never existed. CHECK git history.
 - ECONNREFUSED / ENOTFOUND — downstream service unavailable
 - MongoError / MongoTimeout — database connectivity or query issue
 - OOMKilled / HeapOOM — memory leak or undersized container limits
@@ -43,6 +46,12 @@ Possible error categories you must handle:
 - HTTP5xx — API endpoint returning 500 errors
 - FatalError — Node.js crashed with an unrecoverable error
 
+For MissingEndpoint errors specifically:
+- Identify the missing route from the URL in the log
+- Set fixStrategy to "restore-deleted-code" if recent git diff shows the
+  route was deleted, otherwise "code-fix" to add it
+- Set affectedFunction to the route handler name (e.g. "GET /categories")
+
 Respond ONLY with valid JSON. No markdown. No explanation outside JSON.
 
 Schema:
@@ -50,11 +59,11 @@ Schema:
   "errorType": "string",
   "rootCause": "string (2-3 sentence technical explanation)",
   "affectedFiles": ["file paths relative to repo root"],
-  "affectedFunction": "string (function or method name if identifiable, else empty)",
-  "errorLineHint": "string (code line or pattern visible in the error, if present)",
+  "affectedFunction": "string (function or method name or HTTP route)",
+  "errorLineHint": "string (the URL path or code pattern from the error)",
   "severity": "CRITICAL | HIGH | MEDIUM | LOW",
   "service": "string (microservice name)",
-  "fixStrategy": "string (rollback | code-fix | config-change | scale-up | restart)"
+  "fixStrategy": "rollback | code-fix | restore-deleted-code | config-change | scale-up | restart"
 }`;
 
   const hint = errorType ? `Error category hint: ${errorType} (${severity})\n\n` : '';

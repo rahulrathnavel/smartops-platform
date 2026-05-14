@@ -47,7 +47,6 @@ const ERROR_PATTERNS = [
   { pattern: 'SyntaxError:',            type: 'SyntaxError',       sev: 'CRITICAL' },
   { pattern: 'Cannot read propert',     type: 'NullReference',     sev: 'HIGH'     },
   { pattern: 'UnhandledPromiseRejection',type: 'UnhandledPromise', sev: 'HIGH'     },
-  { pattern: '"level":"error"',         type: 'AppError',          sev: 'MEDIUM'   },
   // Database errors
   { pattern: 'MongoServerError',        type: 'MongoError',        sev: 'CRITICAL' },
   { pattern: 'MongoNetworkError',       type: 'MongoNetwork',      sev: 'CRITICAL' },
@@ -61,9 +60,12 @@ const ERROR_PATTERNS = [
   { pattern: 'out of memory',           type: 'OOM',               sev: 'CRITICAL' },
   { pattern: 'heap out of memory',      type: 'HeapOOM',           sev: 'CRITICAL' },
   { pattern: 'FATAL ERROR',             type: 'FatalError',        sev: 'CRITICAL' },
+  // HTTP routing — missing endpoints, regressions
+  { pattern: 'Response 404 for',        type: 'MissingEndpoint',   sev: 'HIGH'     },
+  { pattern: '"status":404',            type: 'MissingEndpoint',   sev: 'MEDIUM'   },
+  { pattern: 'Response 500 for',        type: 'HTTP5xx',           sev: 'HIGH'     },
+  { pattern: 'Proxy error:',            type: 'ProxyError',        sev: 'HIGH'     },
   { pattern: 'Internal server error',   type: 'InternalError',     sev: 'MEDIUM'   },
-  // HTTP
-  { pattern: 'statusCode":5',           type: 'HTTP5xx',           sev: 'MEDIUM'   },
 ];
 
 function matchErrorPattern(line) {

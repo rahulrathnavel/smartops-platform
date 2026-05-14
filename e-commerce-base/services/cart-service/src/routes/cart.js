@@ -9,6 +9,16 @@ const tracer = trace.getTracer('cart-service');
 
 const cartKey = (userId) => `cart:${userId}`;
 
+// POST / — anonymous cart add (used by frontend for analytics-style traffic
+// when user is not logged in). Logs the event, returns 200.
+router.post('/', (req, res) => {
+  console.log(JSON.stringify({
+    level: 'info', service: 'cart-service', msg: 'anonymous cart add',
+    ts: new Date().toISOString(), body: req.body,
+  }));
+  res.json({ ok: true, anonymous: true });
+});
+
 // GET /:userId
 router.get('/:userId', async (req, res) => {
   const span = tracer.startSpan('cart.get');
