@@ -49,15 +49,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /categories
-router.get('/categories', async (_req, res) => {
-  try {
-    const categories = await Product.distinct('category');
-    res.json({ categories });
-  } catch (err) {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 // GET /:id - get single product
 router.get('/:id', async (req, res) => {
