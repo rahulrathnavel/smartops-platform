@@ -50,6 +50,7 @@ router.get('/', async (req, res) => {
 });
 
 
+
 // GET /:id - get single product
 router.get('/:id', async (req, res) => {
   const span = tracer.startSpan('catalog.getById');
