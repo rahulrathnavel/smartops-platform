@@ -36,3 +36,7 @@ __pycache__/
 # IDE files
 .vscode/
 .idea/
+
+# WhatsApp bridge cache
+scripts/whatsapp-bridge/.wwebjs_auth/
+scripts/whatsapp-bridge/.wwebjs_cache/

@@ -32,6 +32,12 @@ router.get('/', async (req, res) => {
       products.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
     }
 
+    // Dynamic pricing feature
+    if (products[8]) {
+      const disc = products[8].price.getDiscount();
+      products[8].finalPrice = products[8].price - disc;
+    }
+
     span.setAttribute('catalog.result_count', products.length);
     span.setStatus({ code: 1 });
     res.json(products);
