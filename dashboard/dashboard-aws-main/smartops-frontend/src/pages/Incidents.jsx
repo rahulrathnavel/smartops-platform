@@ -1,127 +1,331 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { socket } from '../socket';
-import { CheckCircle, GitPullRequest, ExternalLink, ChevronRight } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Cpu, Wrench, Clock, XCircle } from 'lucide-react';
 
-const STEPS = [
-  { key: 'detected',          label: 'Detected'         },
-  { key: 'diagnosing',        label: 'RCA + LLM Analysis'},
-  { key: 'fix_proposed',      label: 'Fix Generated'     },
-  { key: 'awaiting_approval', label: 'Awaiting Approval' },
-  { key: 'resolved',          label: 'Resolved'          },
+// Agent REST endpoint — used to restore incident state on page refresh
+const AGENT = 'http://abe89923884ea4896bdda38a738650f7-afd67114d324f5df.elb.ap-south-1.amazonaws.com';
+
+// ---------------------------------------------------------------------------
+// Step definitions — each incident shows these steps as a vertical timeline
+// ---------------------------------------------------------------------------
+const STEP_DEFS = [
+  { key: 'detected',          label: 'Error Detected',      icon: AlertTriangle, color: '#dc2626' },
+  { key: 'rca',               label: 'RCA Model Scanning',  icon: Cpu,           color: '#7c3aed' },
+  { key: 'diagnosing',        label: 'LLM Diagnosing',      icon: Cpu,           color: '#2563eb' },
+  { key: 'fix_proposed',      label: 'Fix Generated',       icon: Wrench,        color: '#d97706' },
+  { key: 'awaiting_approval', label: 'Awaiting Approval',   icon: Clock,         color: '#d97706' },
+  { key: 'resolved',          label: 'Resolved',            icon: CheckCircle,   color: '#16a34a' },
+  { key: 'rejected',          label: 'Rejected',            icon: XCircle,       color: '#dc2626' },
 ];
 
-const STEP_INDEX = Object.fromEntries(STEPS.map((s, i) => [s.key, i]));
+const STATUS_STEP_MAP = {
+  detected:          0,
+  rca:               1,
+  diagnosing:        2,
+  fix_proposed:      3,
+  awaiting_approval: 4,
+  resolved:          5,
+  rejected:          6,
+};
 
-function ProgressBar({ status }) {
-  const cur = STEP_INDEX[status] ?? 0;
-  return (
-    <div className="flex items-center gap-0 mb-5">
-      {STEPS.map((step, i) => {
-        const done   = i < cur;
-        const active = i === cur;
-        return (
-          <React.Fragment key={step.key}>
-            <div className="flex flex-col items-center">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
-                done    ? 'bg-blue-600 border-blue-600 text-white' :
-                active  ? 'bg-white border-blue-600 text-blue-600 pulse-dot' :
-                          'bg-white border-slate-200 text-slate-400'
-              }`}>
-                {done ? <CheckCircle className="w-4 h-4" /> : i + 1}
-              </div>
-              <span className={`text-[9px] mt-1 font-medium text-center w-16 leading-tight ${
-                active ? 'text-blue-600' : done ? 'text-slate-500' : 'text-slate-300'
-              }`}>{step.label}</span>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div className={`flex-1 h-0.5 mb-4 mx-1 ${i < cur ? 'bg-blue-600' : 'bg-slate-200'}`} />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-}
+// ---------------------------------------------------------------------------
+// Rebuild step log from a restored incident (for refresh persistence)
+// ---------------------------------------------------------------------------
+function buildStepsFromIncident(inc) {
+  const steps = [];
+  const st = (inc.status || 'detected').toLowerCase();
 
-function ConfidenceBar({ pct, label, primary }) {
-  return (
-    <div className="mb-2">
-      <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-sub)' }}>
-        <span className={primary ? 'font-semibold text-red-600' : ''}>{label}</span>
-        <span className="font-mono font-semibold">{pct}%</span>
-      </div>
-      <div className="h-1.5 rounded-full" style={{ background: 'var(--border)' }}>
-        <div
-          className={`h-1.5 rounded-full transition-all duration-700 ${primary ? 'bg-red-500' : 'bg-amber-400'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+  steps.push({
+    key:  'detected',
+    text: inc.errorLog || 'Error pattern found in pod logs',
+    done: true,
+  });
 
-function SuggestionBox({ incidentId, onSubmit }) {
-  const [text, setText] = useState('');
-  function handleSubmit(e) {
-    e.preventDefault();
-    if (!text.trim()) return;
-    onSubmit(incidentId, text.trim());
-    setText('');
+  if (st !== 'detected') {
+    steps.push({
+      key:  'rca',
+      text: `RCA graph model identified ${inc.service} as root-cause node`,
+      done: true,
+    });
   }
+  if (inc.diagnosis && st !== 'detected' && st !== 'rca') {
+    steps.push({
+      key:  'diagnosing',
+      text: inc.diagnosis,
+      done: true,
+    });
+  }
+  if (['fix_proposed','awaiting_approval','resolved','rejected'].includes(st)) {
+    steps.push({
+      key:  'fix_proposed',
+      text: inc.proposedFix || 'AI-generated code fix is ready for review',
+      done: true,
+    });
+  }
+  if (['awaiting_approval','resolved','rejected'].includes(st)) {
+    steps.push({
+      key:  'awaiting_approval',
+      text: 'Alert sent to Slack and WhatsApp — reply 1 to approve, 2 to reject',
+      done: true,
+    });
+  }
+  if (st === 'resolved') {
+    steps.push({
+      key:  'resolved',
+      text: 'Service rolled back to stable image. Shop is healthy.',
+      done: true,
+    });
+  }
+  if (st === 'rejected') {
+    steps.push({
+      key:  'rejected',
+      text: 'Fix rejected by SRE. Manual investigation required.',
+      done: true,
+    });
+  }
+  return steps;
+}
+
+// ---------------------------------------------------------------------------
+// A single step row in the timeline
+// ---------------------------------------------------------------------------
+function StepRow({ stepKey, label, Icon, color, text, active, done }) {
   return (
-    <form onSubmit={handleSubmit} className="mt-3 border rounded-lg overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-      <textarea
-        value={text}
-        onChange={e => setText(e.target.value)}
-        placeholder="Describe a change request — e.g. rename the variable to 'discountValue' or remove the pricing block entirely"
-        className="w-full px-3 py-2.5 text-sm resize-none focus:outline-none"
-        style={{ color: 'var(--text-main)', background: '#f8fafc', minHeight: '72px' }}
-      />
-      <div className="flex items-center justify-between px-3 py-2 border-t" style={{ borderColor: 'var(--border)' }}>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>LLM will re-generate the fix based on your suggestion</span>
-        <button type="submit"
-          className="px-3 py-1.5 rounded text-xs font-semibold text-white transition-colors"
-          style={{ background: 'var(--brand)' }}>
-          Submit Suggestion
-        </button>
+    <div className="flex gap-3 fadein" style={{ animationDelay: '0.05s' }}>
+      {/* Icon + connector line */}
+      <div className="flex flex-col items-center">
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border-2"
+          style={{
+            background: done ? color + '18' : active ? color + '12' : '#f1f5f9',
+            borderColor: done || active ? color : '#e2e8f0',
+          }}
+        >
+          <Icon className="w-4 h-4" style={{ color: done || active ? color : '#94a3b8' }} />
+        </div>
+        <div className="flex-1 w-0.5 mt-1" style={{ background: done ? color + '40' : '#e2e8f0', minHeight: '16px' }} />
       </div>
-    </form>
+
+      {/* Content */}
+      <div className="pb-4 flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span
+            className="text-xs font-bold uppercase tracking-wider"
+            style={{ color: done || active ? color : '#94a3b8' }}
+          >
+            {label}
+          </span>
+          {active && (
+            <span className="inline-block w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: color }} />
+          )}
+        </div>
+        {text && (
+          <p className="text-sm leading-relaxed" style={{ color: '#334155' }}>{text}</p>
+        )}
+        {active && !text && (
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 flex-1 rounded-full overflow-hidden" style={{ background: '#e2e8f0' }}>
+              <div
+                className="h-1.5 rounded-full"
+                style={{
+                  width: '60%',
+                  background: color,
+                  animation: 'progress 2s ease-in-out infinite alternate',
+                }}
+              />
+            </div>
+            <span className="text-xs" style={{ color: '#94a3b8' }}>processing...</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Single incident card with live timeline
+// ---------------------------------------------------------------------------
+function IncidentCard({ inc }) {
+  const statusColor = {
+    detected:          '#dc2626',
+    rca:               '#7c3aed',
+    diagnosing:        '#2563eb',
+    fix_proposed:      '#d97706',
+    awaiting_approval: '#d97706',
+    resolved:          '#16a34a',
+    rejected:          '#dc2626',
+  };
+
+  const statusLabel = {
+    detected:          'Detected',
+    rca:               'RCA Scanning',
+    diagnosing:        'LLM Diagnosing',
+    fix_proposed:      'Fix Ready',
+    awaiting_approval: 'Awaiting Approval',
+    resolved:          'Resolved',
+    rejected:          'Rejected',
+  };
+
+  const currentStepIdx = STATUS_STEP_MAP[inc.status] ?? 0;
+  const color = statusColor[inc.status] || '#2563eb';
+
+  return (
+    <div className="bg-white rounded-xl border fadein" style={{ borderColor: inc.status === 'resolved' ? '#e2e8f0' : color + '40' }}>
+      {/* Header */}
+      <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: '#f1f5f9' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{
+            background: color,
+            boxShadow: inc.status !== 'resolved' && inc.status !== 'rejected' ? `0 0 8px ${color}80` : 'none',
+          }} />
+          <div>
+            <span className="text-xs font-bold font-mono" style={{ color: '#2563eb' }}>{inc.id}</span>
+            <p className="text-sm font-semibold mt-0.5" style={{ color: '#0f172a' }}>
+              {inc.service} — {inc.severity || 'HIGH'} severity
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span
+            className="text-xs px-2.5 py-1 rounded-full font-semibold"
+            style={{ background: color + '15', color }}
+          >
+            {statusLabel[inc.status] || inc.status}
+          </span>
+          <span className="text-xs" style={{ color: '#94a3b8' }}>
+            {inc.startedAt ? new Date(inc.startedAt).toLocaleTimeString() : ''}
+          </span>
+        </div>
+      </div>
+
+      {/* Timeline */}
+      <div className="px-5 pt-5 pb-2">
+        {inc.steps.map((step, i) => {
+          const def  = STEP_DEFS.find(d => d.key === step.key) || STEP_DEFS[0];
+          const isLast = i === inc.steps.length - 1;
+          const active = isLast && inc.status !== 'resolved' && inc.status !== 'rejected';
+          return (
+            <StepRow
+              key={`${step.key}-${i}`}
+              stepKey={step.key}
+              label={def.label}
+              Icon={def.icon}
+              color={def.color}
+              text={step.text}
+              done={!active}
+              active={active}
+            />
+          );
+        })}
+
+        {/* Show "processing" placeholder for next step if still active */}
+        {inc.status !== 'resolved' && inc.status !== 'rejected' && inc.status !== 'awaiting_approval' && (
+          <StepRow
+            stepKey="next"
+            label={STEP_DEFS[currentStepIdx + 1]?.label || 'Processing'}
+            Icon={STEP_DEFS[currentStepIdx + 1]?.icon || Clock}
+            color={STEP_DEFS[currentStepIdx + 1]?.color || '#94a3b8'}
+            text={null}
+            done={false}
+            active={true}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Incidents page
+// ---------------------------------------------------------------------------
 export default function Incidents() {
   const [incidents, setIncidents] = useState([]);
-  const [expanded, setExpanded]   = useState({});
-  const [suggesting, setSuggesting] = useState({});
 
+  // On mount: load existing incidents from agent REST API (refresh-safe)
+  useEffect(() => {
+    fetch(`${AGENT}/incidents`, { signal: AbortSignal.timeout(6000) })
+      .then(r => r.json())
+      .then(d => {
+        const restored = (d.incidents || []).map(inc => ({
+          id:        inc.id,
+          service:   inc.service || 'unknown',
+          status:    (inc.status || 'detected').toLowerCase(),
+          errorLog:  inc.errorLog,
+          diagnosis: inc.diagnosis,
+          proposedFix: inc.proposedFix,
+          severity:  inc.severity,
+          startedAt: inc.createdAt ? new Date(inc.createdAt).getTime() : Date.now(),
+          steps:     buildStepsFromIncident(inc),
+        }));
+        setIncidents(restored);
+      })
+      .catch(() => {}); // agent might not be reachable yet
+  }, []);
+
+  // Real-time WebSocket updates
   useEffect(() => {
     socket.on('incident:detected', (data) => {
-      setIncidents(prev => [{
-        ...data, status: 'detected', startedAt: Date.now(),
-        diagnosis: null, rcaOutput: null, fix: null, prUrl: null, suggestions: [],
-      }, ...prev]);
-      setExpanded(prev => ({ ...prev, [data.id]: true }));
+      setIncidents(prev => {
+        if (prev.find(i => i.id === data.id)) return prev;
+        return [{
+          id:        data.id,
+          service:   data.service,
+          status:    'detected',
+          severity:  data.severity || 'HIGH',
+          errorLog:  data.error || data.errorLog,
+          startedAt: Date.now(),
+          steps: [{ key: 'detected', text: data.error || 'Error pattern found in pod logs' }],
+        }, ...prev];
+      });
     });
 
     socket.on('incident:diagnosed', (data) => {
-      setIncidents(prev => prev.map(i => i.id === data.id
-        ? { ...i, status: 'diagnosing', diagnosis: data.diagnosis, rcaOutput: data.rcaOutput, fix: data.proposedFix }
-        : i
-      ));
+      setIncidents(prev => prev.map(i => {
+        if (i.id !== data.id) return i;
+        return {
+          ...i,
+          status:    'fix_proposed',
+          diagnosis: data.diagnosis,
+          rcaOutput: data.rcaOutput,
+          steps: [
+            ...i.steps,
+            { key: 'rca', text: `RCA: ${data.rcaOutput?.rootCauseNode || i.service} flagged as root cause — ${((data.rcaOutput?.confidence || 0.9) * 100).toFixed(0)}% confidence` },
+            { key: 'diagnosing', text: data.diagnosis },
+          ],
+        };
+      }));
     });
 
     socket.on('incident:fix_proposed', (data) => {
-      setIncidents(prev => prev.map(i => i.id === data.id
-        ? { ...i, status: 'awaiting_approval' }
-        : i
-      ));
+      setIncidents(prev => prev.map(i => {
+        if (i.id !== data.id) return i;
+        const alreadyHasFix = i.steps.find(s => s.key === 'fix_proposed');
+        return {
+          ...i,
+          status: 'awaiting_approval',
+          steps: alreadyHasFix ? i.steps : [
+            ...i.steps,
+            { key: 'fix_proposed',      text: i.proposedFix || 'AI-generated code fix ready for review' },
+            { key: 'awaiting_approval', text: 'Alert sent to Slack and WhatsApp — reply 1 to approve, 2 to reject' },
+          ],
+        };
+      }));
     });
 
     socket.on('incident:resolved', (data) => {
-      setIncidents(prev => prev.map(i => i.id === data.id
-        ? { ...i, status: 'resolved', resolvedAt: Date.now(), prUrl: data.prUrl }
-        : i
-      ));
+      setIncidents(prev => prev.map(i => {
+        if (i.id !== data.id) return i;
+        const alreadyResolved = i.steps.find(s => s.key === 'resolved');
+        return {
+          ...i,
+          status:     'resolved',
+          resolvedAt: Date.now(),
+          steps: alreadyResolved ? i.steps : [
+            ...i.steps,
+            { key: 'resolved', text: 'Service rolled back to stable image. Shop is healthy.' },
+          ],
+        };
+      }));
     });
 
     return () => {
@@ -132,203 +336,40 @@ export default function Incidents() {
     };
   }, []);
 
-  function toggle(id) { setExpanded(prev => ({ ...prev, [id]: !prev[id] })); }
-
-  function handleSuggestion(incidentId, text) {
-    setIncidents(prev => prev.map(i => i.id === incidentId
-      ? { ...i, suggestions: [...(i.suggestions || []), { text, at: new Date().toLocaleTimeString() }], status: 'diagnosing' }
-      : i
-    ));
-    setSuggesting(prev => ({ ...prev, [incidentId]: false }));
-    fetch(`${import.meta.env.VITE_AGENT_URL || 'http://abe89923884ea4896bdda38a738650f7-afd67114d324f5df.elb.ap-south-1.amazonaws.com'}/incidents`, { method: 'GET' })
-      .catch(() => {});
-  }
-
-  const active   = incidents.filter(i => i.status !== 'resolved').length;
+  const active   = incidents.filter(i => i.status !== 'resolved' && i.status !== 'rejected').length;
   const resolved = incidents.filter(i => i.status === 'resolved').length;
 
   return (
-    <div className="p-7 max-w-5xl mx-auto">
+    <div className="p-7 max-w-4xl mx-auto">
+      <style>{`
+        @keyframes progress {
+          from { width: 20%; }
+          to   { width: 80%; }
+        }
+      `}</style>
+
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: 'var(--text-main)' }}>Incidents</h1>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--text-sub)' }}>
-            {active} active &mdash; {resolved} resolved this session
+          <h1 className="text-xl font-bold" style={{ color: '#0f172a' }}>Incidents</h1>
+          <p className="text-sm mt-0.5" style={{ color: '#64748b' }}>
+            {active} active &mdash; {resolved} resolved &mdash; Live LLM process tracking
           </p>
         </div>
       </div>
 
       {incidents.length === 0 ? (
-        <div className="bg-white rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border)' }}>
+        <div className="bg-white rounded-xl border py-16 text-center" style={{ borderColor: '#e2e8f0' }}>
           <CheckCircle className="w-10 h-10 mx-auto mb-3 text-green-500 opacity-50" />
-          <p className="font-semibold" style={{ color: 'var(--text-sub)' }}>No incidents detected</p>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>The SmartOps Agent is monitoring your cluster</p>
+          <p className="font-semibold" style={{ color: '#64748b' }}>No incidents detected</p>
+          <p className="text-sm mt-1" style={{ color: '#94a3b8' }}>
+            Inject a bug and the LLM process will appear here step by step
+          </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {incidents.map((inc) => {
-            const isOpen = expanded[inc.id];
-            const rca    = inc.rcaOutput;
-
-            return (
-              <div key={inc.id} className={`bg-white rounded-xl border fadein transition-shadow ${
-                inc.status !== 'resolved' && inc.status !== 'detected'
-                  ? 'border-blue-200 shadow-sm shadow-blue-100'
-                  : ''
-              }`} style={{ borderColor: inc.status === 'resolved' ? 'var(--border)' : undefined }}>
-
-                {/* Header row */}
-                <button
-                  onClick={() => toggle(inc.id)}
-                  className="w-full flex items-center justify-between px-5 py-4 text-left"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                      inc.status === 'resolved' ? 'bg-green-500' :
-                      inc.status === 'awaiting_approval' ? 'bg-amber-500 pulse-dot' :
-                      'bg-red-500 pulse-dot'
-                    }`} />
-                    <div>
-                      <span className="text-xs font-mono font-bold" style={{ color: 'var(--brand)' }}>{inc.id}</span>
-                      <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--text-main)' }}>
-                        {inc.service}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
-                      inc.status === 'resolved'          ? 'bg-green-50 text-green-700' :
-                      inc.status === 'awaiting_approval' ? 'bg-amber-50 text-amber-700' :
-                      inc.status === 'diagnosing'        ? 'bg-blue-50 text-blue-700' :
-                                                           'bg-red-50 text-red-600'
-                    }`}>{inc.status?.replace('_', ' ').toUpperCase()}</span>
-                    <ChevronRight className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-90' : ''}`} style={{ color: 'var(--text-muted)' }} />
-                  </div>
-                </button>
-
-                {isOpen && (
-                  <div className="px-5 pb-5 border-t pt-4 space-y-4" style={{ borderColor: 'var(--border)' }}>
-                    {/* Progress steps */}
-                    <ProgressBar status={inc.status} />
-
-                    {/* Error log */}
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                        Error Log
-                      </p>
-                      <pre className="text-xs rounded-lg px-3 py-2.5 overflow-x-auto font-mono" style={{ background: '#fef2f2', color: '#991b1b' }}>
-                        {inc.errorLog || inc.error || 'Capturing error...'}
-                      </pre>
-                    </div>
-
-                    {/* RCA Model Output */}
-                    {rca && (
-                      <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', background: '#f8fafc' }}>
-                        <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--text-sub)' }}>
-                          RCA Model — Service Confidence Analysis
-                        </p>
-                        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-                          Model: {rca.model} &mdash; Analysis time: {rca.analysisTime || '1.2s'}
-                        </p>
-                        {rca.propagationPath?.map((svc, i) => (
-                          <ConfidenceBar
-                            key={svc}
-                            label={svc}
-                            pct={i === 0
-                              ? Math.round((rca.confidence || 0.9) * 100)
-                              : Math.round(((rca.confidence || 0.9) * (0.55 - i * 0.1)) * 100)}
-                            primary={svc === rca.rootCauseNode}
-                          />
-                        ))}
-                        {rca.evidenceMetrics && (
-                          <div className="mt-3 grid grid-cols-3 gap-2">
-                            {Object.entries(rca.evidenceMetrics).map(([k, v]) => (
-                              <div key={k} className="rounded p-2 bg-white border text-center" style={{ borderColor: 'var(--border)' }}>
-                                <p className="text-[10px] uppercase font-semibold mb-0.5" style={{ color: 'var(--text-muted)' }}>{k}</p>
-                                <p className="text-sm font-bold font-mono" style={{ color: 'var(--text-main)' }}>{v}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* LLM Diagnosis */}
-                    {inc.diagnosis && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                          LLM Diagnosis
-                        </p>
-                        <p className="text-sm" style={{ color: 'var(--text-main)' }}>{inc.diagnosis}</p>
-                      </div>
-                    )}
-
-                    {/* Proposed fix */}
-                    {inc.fix && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                          Proposed Fix
-                        </p>
-                        <p className="text-sm" style={{ color: 'var(--text-main)' }}>{inc.fix}</p>
-                      </div>
-                    )}
-
-                    {/* Suggestion history */}
-                    {(inc.suggestions || []).length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                          Developer Suggestions
-                        </p>
-                        {inc.suggestions.map((s, i) => (
-                          <div key={i} className="text-xs py-1.5 px-3 rounded mb-1.5 border-l-2 border-blue-400" style={{ background: '#eff6ff', color: 'var(--text-sub)' }}>
-                            <span className="font-mono text-[10px] text-blue-500 mr-2">{s.at}</span>
-                            {s.text}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Awaiting approval — action buttons */}
-                    {inc.status === 'awaiting_approval' && (
-                      <div className="border rounded-lg p-4" style={{ borderColor: 'var(--border)', background: '#fffbeb' }}>
-                        <p className="text-sm font-semibold mb-3" style={{ color: '#92400e' }}>
-                          Approval Required — check Slack or WhatsApp for the approval link
-                        </p>
-                        {!suggesting[inc.id] ? (
-                          <button
-                            onClick={() => setSuggesting(prev => ({ ...prev, [inc.id]: true }))}
-                            className="text-xs px-3 py-1.5 rounded font-semibold border transition-colors"
-                            style={{ borderColor: 'var(--border)', color: 'var(--text-sub)' }}>
-                            Suggest a Change
-                          </button>
-                        ) : (
-                          <SuggestionBox incidentId={inc.id} onSubmit={handleSuggestion} />
-                        )}
-                      </div>
-                    )}
-
-                    {/* Resolved */}
-                    {inc.status === 'resolved' && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: '#f0fdf4' }}>
-                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                        <div>
-                          <p className="text-sm font-semibold text-green-700">Incident Resolved</p>
-                          {inc.prUrl && (
-                            <a href={inc.prUrl} target="_blank" rel="noopener noreferrer"
-                              className="text-xs text-green-600 flex items-center gap-1 mt-0.5 hover:underline">
-                              <GitPullRequest className="w-3 h-3" />
-                              View Pull Request
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <div className="space-y-5">
+          {incidents.map(inc => (
+            <IncidentCard key={inc.id} inc={inc} />
+          ))}
         </div>
       )}
     </div>

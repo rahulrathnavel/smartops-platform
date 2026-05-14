@@ -61,12 +61,6 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    // BUG: promo data undefined — crashes for terra-commute-backpack (product #3)
-    if (req.params.id === 'terra-commute-backpack') {
-      const promoData = undefined;
-      product.salePrice = product.price - (promoData.discountPercent * product.price / 100);
-    }
-
     span.setStatus({ code: 1 });
     res.json(product);
   } catch (err) {
