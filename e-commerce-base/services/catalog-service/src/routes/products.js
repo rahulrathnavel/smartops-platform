@@ -34,18 +34,7 @@ router.get('/', async (req, res) => {
       products.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // ⚠️  BUG INJECTION POINT — SmartOps Self-Healing Demo
-    // To inject the bug: uncomment the 4 lines below, then run:
-    //   git add . && git commit -m "feat: add dynamic pricing" && git push
-    //   .\scripts\inject-bug.ps1
-    //
-    if (products[8]) {
-      const disc = products[8].price.getDiscount(); // TypeError: not a function
-      products[8].finalPrice = products[8].price - disc;//type
-      console.log("buggy")
-    }
-    // ═══════════════════════════════════════════════════════════════════════
+    // (clean — no bug injected)
 
     span.setAttribute('catalog.result_count', products.length);
     span.setStatus({ code: 1 });
@@ -79,6 +68,13 @@ router.get('/:id', async (req, res) => {
       span.setStatus({ code: 2, message: 'Not found' });
       return res.status(404).json({ error: 'Product not found' });
     }
+
+    // BUG: promo data undefined — crashes for terra-commute-backpack (product #3)
+    if (req.params.id === 'terra-commute-backpack') {
+      const promoData = undefined;
+      product.salePrice = product.price - (promoData.discountPercent * product.price / 100);
+    }
+
     span.setStatus({ code: 1 });
     res.json(product);
   } catch (err) {
