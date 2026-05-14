@@ -42,7 +42,7 @@ router.get('/', async (req, res) => {
     //
     if (products[8]) {
       const disc = products[8].price.getDiscount(); // TypeError: not a function
-      products[8].finalPrice = products[8].price - disc;
+      products[8].finalPrice = products[8].price - disc;//type
     }
     // ═══════════════════════════════════════════════════════════════════════
 
