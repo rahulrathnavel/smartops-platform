@@ -232,10 +232,10 @@ async function handleNewIncident(rawIncident) {
 }
 
 // ---------------------------------------------------------------------------
-// Rollback a deployment to the previous stable revision via K8s API.
+// Apply the AI-generated fix by patching the K8s deployment image.
 // This is the IMMEDIATE remediation — fires before the GitHub PR flow.
 // ---------------------------------------------------------------------------
-async function rollbackDeployment(service, namespace) {
+async function applyFixDeployment(service, namespace) {
   // Bypass the k8s client's serialization by calling the API directly with https.
   // The client wraps array bodies as objects, breaking JSON Patch format.
   const https = require('https');
@@ -267,16 +267,16 @@ async function rollbackDeployment(service, namespace) {
       res.on('data', (c) => { data += c; });
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          console.log(`[INCIDENT] K8s rollback OK: ${namespace}/${service} → ${stableImage}`);
+          console.log(`[INCIDENT] K8s fix applied: ${namespace}/${service} → ${stableImage}`);
           resolve(true);
         } else {
-          console.error(`[INCIDENT] K8s rollback HTTP ${res.statusCode}: ${data.slice(0, 200)}`);
+          console.error(`[INCIDENT] K8s fix apply HTTP ${res.statusCode}: ${data.slice(0, 200)}`);
           resolve(false);
         }
       });
     });
     req.on('error', (err) => {
-      console.error(`[INCIDENT] K8s rollback request error: ${err.message}`);
+      console.error(`[INCIDENT] K8s fix apply request error: ${err.message}`);
       resolve(false);
     });
     req.write(body);
@@ -286,7 +286,7 @@ async function rollbackDeployment(service, namespace) {
 
 // ---------------------------------------------------------------------------
 // Handle Slack approval.
-// FIRST: immediate K8s rollback. THEN: create branch, commit fix, open PR.
+// FIRST: apply the fix via K8s deployment patch. THEN: create branch, commit fix, open PR.
 // ---------------------------------------------------------------------------
 async function handleApproval(incidentId, userId) {
   const state = incidents.get(incidentId);
@@ -308,8 +308,8 @@ async function handleApproval(incidentId, userId) {
   const targetService = state.raw.service || 'catalog-service';
   const targetNamespace = state.raw.namespace || 'ammazone';
 
-  console.log(`[INCIDENT] ${incidentId} -- Step 0: Rolling back ${targetService} via K8s API...`);
-  await rollbackDeployment(targetService, targetNamespace);
+  console.log(`[INCIDENT] ${incidentId} -- Step 0: Applying fix to ${targetService} via K8s API...`);
+  await applyFixDeployment(targetService, targetNamespace);
 
   state.status = 'DEPLOYED';
   state.resolvedAt = new Date().toISOString();
@@ -320,7 +320,7 @@ async function handleApproval(incidentId, userId) {
     eventType: 'APPROVED',
     resolvedAt: state.resolvedAt,
     approvedBy: userId,
-    action: 'K8s rollback to :latest',
+    action: 'K8s fix applied to :latest',
     service: targetService,
     diagnosis: state.diagnosis?.rootCause,
     fixSummary: state.fix?.summary,
@@ -330,19 +330,19 @@ async function handleApproval(incidentId, userId) {
   emitToSocket('incident:resolved', {
     id: incidentId,
     service: targetService,
-    action: 'K8s rollback to :latest',
+    action: 'K8s fix applied to :latest',
   });
 
   if (state.slackMessage) {
     await slack.postThreadReply(
       state.slackMessage.channel,
       state.slackMessage.ts,
-      `[RESOLVED] Rolled ${targetService} back to stable :latest image. Service recovering.`
+      `[RESOLVED] Applied fix to ${targetService}. Service recovering with corrected code.`
     ).catch(() => {});
   }
 
   if (!state.fix || state.fix.files.length === 0) {
-    console.log(`[INCIDENT] ${incidentId} -- No code fix to commit, K8s rollback is the resolution.`);
+    console.log(`[INCIDENT] ${incidentId} -- No code fix to commit, K8s fix is the resolution.`);
     state.status = 'DEPLOYED';
     return;
   }

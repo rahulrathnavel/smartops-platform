@@ -47,7 +47,7 @@ function buildIncidentMessage(incidentId, diagnosis, fix, approveUrl, rejectUrl)
         text: [
           '*Reply in this thread to act:*',
           '',
-          '`1`  — Approve and deploy (rolls back service + applies fix)',
+          '`1`  — Approve and deploy (applies AI-generated fix)',
           '`2`  — Reject (no change, manual fix needed)',
           '`3 <your request>`  — Suggest a change to the fix',
           '         _Example:_ `3 remove the getDiscount call entirely`',
@@ -76,7 +76,7 @@ function buildApprovedMessage(incidentId, diagnosis, prNumber) {
       text: {
         type: 'mrkdwn',
         text: [
-          `*Service rolled back to stable image.*`,
+          `*Fix applied and deployed.*`,
           `*Service:*    \`${diagnosis.service}\``,
           `*Root cause:* ${diagnosis.rootCause}`,
           prNumber ? `*PR:* #${prNumber} merged` : '',

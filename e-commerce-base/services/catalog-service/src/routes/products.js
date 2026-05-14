@@ -34,7 +34,17 @@ router.get('/', async (req, res) => {
       products.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
     }
 
-    // (clean — no bug injected)
+    // ═══════════════════════════════════════════════════════════════════════
+    // ⚠️  BUG INJECTION POINT — SmartOps Self-Healing Demo
+    // To inject the bug for the demo, uncomment the 4 lines below, then run:
+    //   git add . && git commit -m "feat: add dynamic pricing" && git push
+    //   .\scripts\inject-bug.ps1
+    //
+    // if (products[8]) {
+    //   const disc = products[8].price.getDiscount(); // TypeError: not a function
+    //   products[8].finalPrice = products[8].price - disc;
+    // }
+    // ═══════════════════════════════════════════════════════════════════════
 
     span.setAttribute('catalog.result_count', products.length);
     span.setStatus({ code: 1 });
@@ -49,10 +59,17 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /categories - list distinct product categories
+router.get('/categories', async (_req, res) => {
+  try {
+    const categories = await Product.distinct('category');
+    res.json({ categories });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-
-
-// GET /:id - get single product
+// GET /:id - get single product by productId
 router.get('/:id', async (req, res) => {
   const span = tracer.startSpan('catalog.getById');
   try {

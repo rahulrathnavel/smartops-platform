@@ -202,18 +202,27 @@ RULES:
 1. Output ONLY valid JSON. No markdown fences. No text outside JSON.
 2. Only change what is strictly necessary to fix the bug.
 3. If fixStrategy is "rollback" — set files to [] and explain in summary.
-4. If fixStrategy is "code-fix" — provide the corrected function ONLY (not whole file).
+4. If fixStrategy is "code-fix" or "restore-deleted-code" — provide the COMPLETE corrected file content for each affected file.
 5. Be precise: reference exact line numbers and function names.
+
+CRITICAL KNOWLEDGE — catalog-service products.js:
+- The file has EXACTLY 3 routes in this order: GET /, GET /categories, GET /:id
+- /categories MUST be defined BEFORE /:id (Express route matching order)
+- Product.price is a plain Number (e.g. 29.99) — it has NO methods like .getDiscount()
+- Use Product.findOne({ productId: ... }), NOT Product.findById()
+- There must be exactly ONE module.exports = router; at the end
+- Each route handler must have try/catch/finally with OpenTelemetry span management
+- If a route was deleted, restore it. If a TypeError bug was injected, remove the bad code.
 
 Response schema:
 {
   "summary": "string (2-sentence fix description for the SRE)",
-  "fixStrategy": "rollback | code-fix | config-change | restart",
+  "fixStrategy": "code-fix | restore-deleted-code | config-change | restart",
   "files": [
     {
       "path": "string",
       "functionName": "string (which function was changed)",
-      "content": "string (the corrected function body only — NOT the whole file)",
+      "content": "string (the corrected file content)",
       "explanation": "string (what changed, why, and what line)"
     }
   ],

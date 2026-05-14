@@ -15,7 +15,7 @@ const { logAuditEvent } = require('../audit/audit-logger');
 // This gives the LLM precise, non-truncated code context for any error.
 // ---------------------------------------------------------------------------
 
-const INDEXABLE_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.yaml', '.yml', '.tf'];
+const INDEXABLE_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.yaml', '.yml', '.tf', '.md'];
 const SKIP_DIRS             = ['node_modules', '.git', 'dist', 'build', '.terraform', '.wwebjs'];
 
 // Token budget: ~4 chars = 1 token. Keep each chunk under 1200 tokens.

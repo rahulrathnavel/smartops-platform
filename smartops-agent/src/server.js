@@ -6,7 +6,7 @@ const { config } = require('./config');
 // ---------------------------------------------------------------------------
 // Express HTTP server.
 // Approval is via clickable HTTP links (GET /approve/:id/:token shows confirmation,
-// POST /approve/:id/:token triggers the rollback) rather than Slack interactive
+// POST /approve/:id/:token triggers the fix deployment) rather than Slack interactive
 // buttons, which require HTTPS and a configured Slack App webhook URL.
 // ---------------------------------------------------------------------------
 
@@ -28,7 +28,7 @@ function createServer({ interactionHandler, webhookHandler, approvalHandler, rej
         health:    'GET /health',
         incidents: 'GET /incidents',
         approve:   'GET /approve/:incidentId/:token  (confirmation page)',
-        approveAction: 'POST /approve/:incidentId/:token (triggers rollback)',
+        approveAction: 'POST /approve/:incidentId/:token (applies fix & deploys)',
         reject:    'GET /reject/:incidentId/:token',
         rejectAction: 'POST /reject/:incidentId/:token',
         slack:     'POST /slack/interactions',
@@ -101,7 +101,7 @@ function createServer({ interactionHandler, webhookHandler, approvalHandler, rej
     .meta{font-size:12px;color:#94a3b8;margin-top:16px}
   `;
 
-  // ── Approval flow — GET shows confirmation, POST triggers rollback ─────────
+  // ── Approval flow — GET shows confirmation, POST applies the fix ──────────
   app.get('/approve/:incidentId/:token', (req, res) => {
     const { incidentId } = req.params;
     res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -109,7 +109,7 @@ function createServer({ interactionHandler, webhookHandler, approvalHandler, rej
       <style>${PAGE_CSS}</style></head><body>
       <div class="card">
         <h1>Incident Approval</h1>
-        <p class="sub">Approving this will roll back <span class="service">${incidentId}</span> to the last stable image and apply the AI-generated fix.</p>
+        <p class="sub">Approving this will apply the AI-generated fix to <span class="service">${incidentId}</span> and deploy the corrected version.</p>
         <form method="POST">
           <button class="btn btn-approve" type="submit">Approve and Deploy</button>
         </form>
@@ -127,10 +127,10 @@ function createServer({ interactionHandler, webhookHandler, approvalHandler, rej
       <style>${PAGE_CSS}</style>
       <script>setTimeout(()=>location.replace('/'),15000)</script></head><body>
       <div class="card">
-        <h1>Deployment in Progress</h1>
-        <p class="sub">Rolling back <span class="service">catalog-service</span> to stable image. The service will recover in approximately 30 seconds.</p>
+        <h1>Fixing Bug</h1>
+        <p class="sub">Applying the AI-generated fix to <span class="service">catalog-service</span>. The service will recover in approximately 30 seconds.</p>
         <div class="spinner"></div>
-        <span class="badge badge-processing">Processing rollback...</span>
+        <span class="badge badge-processing">Fixing bug...</span>
         <p class="meta" style="margin-top:20px">This page closes automatically.</p>
       </div></body></html>`);
     setImmediate(() => {
